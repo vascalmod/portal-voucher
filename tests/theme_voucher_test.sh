@@ -206,8 +206,7 @@ check "nojson-still-redirects" 'printf "%s" "$NOJSON_OUT" | grep -q "http://10.0
 
 # --- 5. CPD safety: inline CSS present, no JS/href leftovers ---
 check "css-redirect-card" 'printf "%s" "$STATUS_OUT" | grep -q "load-spinner" && printf "%s" "$STATUS_OUT" | grep -q "voucher-form"'
-check "no-href" '! printf "%s" "$STATUS_OUT" | sed '"'"'s/href="data:[^"]*"//g'"'"' | grep -qi "href"'
-check "favicon-icon" 'printf "%s" "$STATUS_OUT" | grep -q '"'"'rel="icon" type="image/png" href="data:image/png;base64,'"'"''
+check "no-href" '! printf "%s" "$STATUS_OUT" | grep -qi "href"'
 check "no-onclick" '! printf "%s" "$STATUS_OUT" | grep -qi "onclick"'
 check "status-single-script" '[ "$(printf "%s" "$STATUS_OUT" | grep -o "<script>" | wc -l)" -eq 1 ]'
 
