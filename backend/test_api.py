@@ -476,5 +476,122 @@ class BackendSelectionTests(unittest.TestCase):
             api.VOUCHER_DB = os.environ.get("VOUCHER_DB", "")
 
 
+class PortalTests(unittest.TestCase):
+    """Public customer surface: rates shape, status snapshots, code resume,
+    and the sliding-window gates. No network."""
+
+    def setUp(self):
+        self._old_db = os.environ.get("VOUCHER_DB")
+        self._old_url = os.environ.get("DATABASE_URL")
+        os.environ.pop("DATABASE_URL", None)
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        os.environ["VOUCHER_DB"] = self.tmp.name
+        api.VOUCHER_DB = self.tmp.name
+        api.DATABASE_URL = ""
+        self.db = api.DB.connect()
+        self.db.execute(
+            "INSERT INTO vouchers (code,total_secs,used_secs,state,"
+            " bound_mac,resume_ts) VALUES "
+            "('P-NEW',28800,0,'NEW',NULL,NULL),"
+            "('P-ACT',28800,100,'ACTIVE','AA:BB:CC:DD:EE:01',"
+            " datetime('now')),"
+            "('P-PAUS',57600,3600,'PAUSED','AA:BB:CC:DD:EE:02',NULL),"
+            "('P-EXP',100,100,'EXPIRED','AA:BB:CC:DD:EE:03',NULL),"
+            "('P-DIS',28800,0,'DISABLED',NULL,NULL),"
+            "('P-ZERO',100,100,'NEW',NULL,NULL)")
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+        os.unlink(self.tmp.name)
+        if self._old_db is None:
+            os.environ.pop("VOUCHER_DB", None)
+        else:
+            os.environ["VOUCHER_DB"] = self._old_db
+        if self._old_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = self._old_url
+
+    def test_rates_shape_matches_portal_card(self):
+        r = api.portal_rates()
+        self.assertEqual(len(r["tiers"]), 7)
+        secs = [t["total_secs"] for t in r["tiers"]]
+        self.assertEqual(secs, sorted(secs))
+        by_secs = {t["total_secs"]: t for t in r["tiers"]}
+        self.assertEqual(by_secs[28800]["price_php"], 5)
+        self.assertEqual(by_secs[2592000]["price_php"], 500)
+        self.assertEqual(by_secs[129600]["label"], "36 Hours (1.5 Days)")
+
+    def test_status_snapshots(self):
+        self.assertEqual(api.portal_status(self.db, "NOPE")["error"],
+                         "not_valid")
+        self.assertEqual(api.portal_status(self.db, "P-DIS")["error"],
+                         "not_valid")
+        self.assertEqual(api.portal_status(self.db, "bad!!")["error"],
+                         "not_valid")
+        new = api.portal_status(self.db, "P-NEW")
+        self.assertEqual((new["ok"], new["active"], new["paused"],
+                          new["remaining_seconds"]),
+                         (True, False, False, 28800))
+        act = api.portal_status(self.db, "P-ACT")
+        self.assertTrue(act["ok"] and act["active"] and not act["paused"])
+        self.assertGreater(act["remaining_seconds"], 0)
+        pau = api.portal_status(self.db, "P-PAUS")
+        self.assertTrue(pau["ok"] and pau["paused"])
+        self.assertEqual(pau["remaining_seconds"], 57600 - 3600)
+        exp = api.portal_status(self.db, "P-EXP")
+        self.assertEqual((exp["ok"], exp["expired"],
+                          exp["remaining_seconds"]),
+                         (True, True, 0))
+
+    def test_resume_by_code_matrix(self):
+        self.assertEqual(api.resume_by_code(self.db, "NOPE")["error"],
+                         "not_valid")
+        self.assertEqual(api.resume_by_code(self.db, "P-DIS")["error"],
+                         "not_valid")
+        self.assertEqual(api.resume_by_code(self.db, "P-ZERO")["error"],
+                         "expired")
+        new = api.resume_by_code(self.db, "P-NEW")
+        self.assertEqual((new["ok"], new["resumed"],
+                          new["remaining_seconds"]),
+                         (True, False, 28800))
+        row = self.db.row("SELECT * FROM vouchers WHERE code=%s",
+                          ("P-NEW",))
+        self.assertEqual(row["state"], "NEW")  # untouched
+        before = self.db.row("SELECT * FROM vouchers WHERE code=%s",
+                             ("P-ACT",))["resume_ts"]
+        act = api.resume_by_code(self.db, "P-ACT")
+        self.assertEqual((act["ok"], act["resumed"]), (True, False))
+        after = self.db.row("SELECT * FROM vouchers WHERE code=%s",
+                            ("P-ACT",))["resume_ts"]
+        self.assertEqual(str(before), str(after))  # anchor untouched
+        pau = api.resume_by_code(self.db, "P-PAUS")
+        self.assertEqual((pau["ok"], pau["resumed"],
+                          pau["remaining_seconds"]),
+                         (True, True, 57600 - 3600))
+        row = self.db.row("SELECT * FROM vouchers WHERE code=%s",
+                          ("P-PAUS",))
+        self.assertEqual(row["state"], "ACTIVE")
+        self.assertEqual(int(row["used_secs"]), 3600)  # preserved
+        self.assertIsNotNone(row["resume_ts"])
+        ev = self.db.row("SELECT * FROM events WHERE code=%s"
+                         " ORDER BY id DESC", ("P-PAUS",))
+        self.assertEqual((ev["decision"], ev["reason"]),
+                         ("ALLOW", "resumed"))
+
+    def test_rate_windows(self):
+        ip1, ip2 = "10.9.9.101", "10.9.9.102"
+        for _ in range(10):
+            self.assertFalse(api.portal_code_limited(ip1))
+        self.assertTrue(api.portal_code_limited(ip1))
+        self.assertFalse(api.portal_code_limited(ip2))
+        # ip2 already spent 1 of 30 "all" hits on the probe above.
+        for _ in range(29):
+            self.assertFalse(api.portal_limited(ip2))
+        self.assertTrue(api.portal_limited(ip2))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

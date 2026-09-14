@@ -66,6 +66,26 @@ pesos (mirrors the portal price card). Sold = bound_mac IS NOT NULL
 non-tier totals count as custom (tracked, priced unknown). Liability =
 live remaining seconds across ACTIVE rows (settled, capped).
 
+Public customer surface for browser SPAs (NO PSK by design — the voucher
+code in the POST body IS the credential, same trust as the printed
+voucher; codes never appear in URLs, logs, or responses beyond status):
+   GET  /portal/rates   -> {tiers[]} (pure RATE_TIERS map, no DB)
+   POST /portal/status  -> {code} -> {ok, active, paused,
+       remaining_seconds, expired?} or {ok:false, error:not_valid}
+       (unknown/disabled/malformed share not_valid; holder states render
+       truthfully; read-only)
+   POST /portal/pause   -> {code} -> {ok, paused, remaining_seconds}
+       (pauses ACTIVE by code; always the same shape — no oracle)
+   POST /portal/resume  -> {code} -> {ok, remaining_seconds, resumed?}
+       (PAUSED flips to ACTIVE atomically, used/total preserved; ACTIVE
+       returns a snapshot WITHOUT touching resume_ts — a browser can
+       never mint time or a Wi-Fi grant; grants stay MAC-bound on EAP)
+   All /portal/* are per-IP sliding-window rate-limited (30 req/min,
+   10 code attempts/min; 429 + generic body) and CORS-gated to
+   PORTAL_ORIGIN (comma-separated allowlist; preflight via OPTIONS;
+   unlisted origins get no CORS headers). /admin/api/* answers CORS
+   the same way for the admin SPA.
+
 Backend selection (explicit; NEVER silent):
   DATABASE_URL set (postgres scheme) -> PostgreSQL ONLY via the `psycopg` v3
       driver (`pip install "psycopg[binary]"`). Driver missing, URL bad, or DB
@@ -77,6 +97,8 @@ Backend selection (explicit; NEVER silent):
 
 Config env: DATABASE_URL, VOUCHER_DB, VOUCHER_PSK (required; compare_digest),
 ADMIN_PSK (optional; enables /admin/api/* + marks dashboard live),
+PORTAL_ORIGIN (optional; comma-separated CORS allowlist for browser SPAs
+calling /portal/* and /admin/api/*; empty = no browser access),
 HOST (default 127.0.0.1; production HOST=0.0.0.0 or the Ubuntu LAN IP — the API
 is an internal EAP-to-Ubuntu service, never Internet-facing),
 PORT (default 8080), UP_KBPS / DOWN_KBPS (default 10240 = 10 Mbps; EAP
@@ -101,9 +123,11 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import traceback
 import urllib.parse
+from collections import deque
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CODE_RE = re.compile(r"^[A-Z0-9-]{4,20}$")
@@ -117,6 +141,80 @@ DOWN_KBPS = int(os.environ.get("DOWN_KBPS", "10240"))
 RATE_TIERS = {28800: 5, 57600: 10, 129600: 20, 345600: 50,
               777600: 100, 1641600: 200, 2592000: 500}
 MAX_TOTAL_SECS = 5184000  # 60-day cap for admin create/extend
+
+# Public customer surface (/portal/*): browser-safe, NO PSK. Trust model:
+# the voucher CODE is the credential (same as the printed voucher); the
+# browser can only inspect/flip voucher STATE, never mint a Wi-Fi grant
+# (grants stay MAC-bound on the EAP path). Unknown/disabled/malformed
+# share one generic answer; only the holder's own states (NEW/ACTIVE/
+# PAUSED/EXPIRED) render truthfully. Rate limits are per server instance
+# (best-effort under multi-instance Railway).
+PORTAL_RATE_WINDOW = 60.0
+PORTAL_RATE_MAX = 30   # req/min/IP across all /portal/*
+PORTAL_CODE_MAX = 10   # code attempts/min/IP (status/pause/resume)
+_portal_hits = {}      # ip -> {"all": deque, "code": deque}
+_portal_lock = threading.Lock()
+
+
+def portal_origins():
+    """Allowed CORS origins for browser SPAs (comma-separated env)."""
+    return [o.strip() for o in os.environ.get("PORTAL_ORIGIN", "").split(",")
+            if o.strip()]
+
+
+def cors_headers(handler):
+    """Echo a whitelisted Origin, else no CORS headers (fail closed)."""
+    origin = handler.headers.get("Origin", "")
+    if origin and origin in portal_origins():
+        return {"Access-Control-Allow-Origin": origin, "Vary": "Origin"}
+    return {}
+
+
+def portal_limited(ip):
+    """Sliding-window gate for /portal/* (no-code calls). True = refuse."""
+    now = time.monotonic()
+    with _portal_lock:
+        ent = _portal_hits.get(ip)
+        if ent is None:
+            ent = _portal_hits[ip] = {"all": deque(), "code": deque()}
+        dq = ent["all"]
+        while dq and now - dq[0] > PORTAL_RATE_WINDOW:
+            dq.popleft()
+        if len(dq) >= PORTAL_RATE_MAX:
+            return True
+        dq.append(now)
+        _prune_locked(now)
+        return False
+
+
+def portal_code_limited(ip):
+    """Stricter bucket for code-attempt calls. True = refuse."""
+    now = time.monotonic()
+    with _portal_lock:
+        ent = _portal_hits.get(ip)
+        if ent is None:
+            ent = _portal_hits[ip] = {"all": deque(), "code": deque()}
+        for dq in (ent["all"], ent["code"]):
+            while dq and now - dq[0] > PORTAL_RATE_WINDOW:
+                dq.popleft()
+        if len(ent["all"]) >= PORTAL_RATE_MAX \
+                or len(ent["code"]) >= PORTAL_CODE_MAX:
+            return True
+        ent["all"].append(now)
+        ent["code"].append(now)
+        _prune_locked(now)
+        return False
+
+
+def _prune_locked(now):
+    if len(_portal_hits) > 4096:
+        dead = [k for k, v in _portal_hits.items()
+                if not v["all"] and not v["code"]
+                or (v["all"] and now - v["all"][-1] > PORTAL_RATE_WINDOW
+                    and v["code"]
+                    and now - v["code"][-1] > PORTAL_RATE_WINDOW)]
+        for k in dead[:1024]:
+            _portal_hits.pop(k, None)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 VOUCHER_DB = os.environ.get("VOUCHER_DB", "")
@@ -610,6 +708,98 @@ def _dicts(cur):
     return [dict(r) for r in cur.fetchall()]
 
 
+def portal_rates():
+    """Public tier list (pure function of RATE_TIERS, no DB). Shape matches
+    what the React SPA renders; labels mirror the EAP price card."""
+    labels = {28800: "8 Hours", 57600: "16 Hours",
+              129600: "36 Hours (1.5 Days)", 345600: "4 Days (96 Hours)",
+              777600: "9 Days", 1641600: "19 Days",
+              2592000: "30 Days (1 Month)"}
+    return {"tiers": [
+        {"total_secs": t, "price_php": p,
+         "label": labels.get(t, "%ds" % t)}
+        for t, p in sorted(RATE_TIERS.items())]}
+
+
+def _portal_row(db, code):
+    """Shared lookup: None for malformed/unknown/DISABLED (generic answer),
+    else the settled row. Callers render holder states truthfully."""
+    code = normalize(code)
+    if not CODE_RE.match(code):
+        return None
+    row = db.row("SELECT * FROM vouchers WHERE code=%s", (code,))
+    if row is None or row["state"] == "DISABLED":
+        return None
+    return row
+
+
+def portal_status(db, code, now=None):
+    """Browser status-by-code. Read-only. Generic not_valid for anything
+    that is not the holder's own voucher."""
+    now = time.time() if now is None else float(now)
+    code = normalize(code)
+    row = _portal_row(db, code)
+    if row is None:
+        return {"ok": False, "error": "not_valid"}
+    _, remaining = _settle(row, now)
+    state = row["state"]
+    if state == "EXPIRED" or remaining <= 0:
+        return {"ok": True, "active": False, "paused": False,
+                "remaining_seconds": 0, "expired": True}
+    return {"ok": True, "active": state == "ACTIVE",
+            "paused": state == "PAUSED", "remaining_seconds": remaining,
+            "expired": False}
+
+
+def resume_by_code(db, code, now=None):
+    """Browser resume-by-code: PAUSED + remaining -> ACTIVE atomically
+    (used/total preserved, fresh resume_ts). ACTIVE + remaining -> ok
+    snapshot WITHOUT touching resume_ts (a browser can never mint time).
+    NEW/unknown/disabled -> generic not_valid; exhausted -> expired flip."""
+    now = time.time() if now is None else float(now)
+    code = normalize(code)
+    if not CODE_RE.match(code):
+        return {"ok": False, "error": "not_valid"}
+    db.begin_claim()
+    try:
+        row = _locked_row(db, "code=%s", (code,))
+        if row is None or row["state"] == "DISABLED":
+            log_event(db, code, "", "", "", "DENY", "unknown", 0)
+            db.commit()
+            return {"ok": False, "error": "not_valid"}
+        used, remaining = _settle(row, now)
+        if remaining <= 0 or row["state"] == "EXPIRED":
+            db.execute("UPDATE vouchers SET used_secs=%s, resume_ts=NULL,"
+                       " state='EXPIRED' WHERE code=%s", (used, code))
+            log_event(db, code, "", "", "", "DENY", "expired", 0)
+            db.commit()
+            return {"ok": False, "error": "expired"}
+        if row["state"] == "NEW":
+            # Holder's own fresh voucher: truthful snapshot, no state
+            # change (starting a session needs the Wi-Fi/EAP claim path).
+            db.commit()
+            return {"ok": True, "active": False, "paused": False,
+                    "remaining_seconds": remaining, "expired": False,
+                    "resumed": False}
+        nowfn = db.now_sql()
+        if row["state"] == "PAUSED":
+            db.execute(
+                "UPDATE vouchers SET state='ACTIVE', used_secs=%s,"
+                " resume_ts=" + db.stamp_sql() + ","
+                " last_auth=" + nowfn + " WHERE code=%s",
+                (used, db.stamp_param(now), code))
+            log_event(db, code, "", "", "", "ALLOW", "resumed", remaining)
+            db.commit()
+            return {"ok": True, "remaining_seconds": remaining,
+                    "resumed": True}
+        db.commit()  # ACTIVE: snapshot only, anchor untouched
+        return {"ok": True, "remaining_seconds": remaining,
+                "resumed": False}
+    except Exception:
+        db.rollback()
+        raise
+
+
 def admin_stats(db, now=None):
     """Profit + inventory snapshot. Read-only. Portable SQL only."""
     now = time.time() if now is None else float(now)
@@ -943,6 +1133,31 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             db.close()
 
+    def do_OPTIONS(self):
+        # Preflight for browser SPAs (portal + admin API only). Unknown
+        # paths get no CORS headers (fail closed, no origin echo).
+        try:
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path.startswith(("/portal/", "/admin/api/")):
+                extra = {"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                         "Access-Control-Allow-Headers":
+                         "Content-Type, X-PSK",
+                         "Access-Control-Max-Age": "600"}
+                extra.update(cors_headers(self))
+                self.send_response(204)
+                for key, value in extra.items():
+                    self.send_header(key, value)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self._send(404, "text/plain", b"DENY unknown\n")
+        except Exception:
+            log.error("OPTIONS failed:\n%s", traceback.format_exc())
+            try:
+                self._send(500, "text/plain", b"error\n")
+            except Exception:
+                pass
+
     def do_GET(self):
         try:
             parsed = urllib.parse.urlparse(self.path)
@@ -980,6 +1195,11 @@ class Handler(BaseHTTPRequestHandler):
                 finally:
                     db.close()
                 return self._send_json(200, body)
+            if parsed.path == "/portal/rates":
+                if portal_limited(self.client_address[0]):
+                    return self._send_json(
+                        429, {"ok": False, "error": "rate_limited"})
+                return self._send_json(200, portal_rates())
             if parsed.path == "/session":
                 qs = urllib.parse.parse_qs(parsed.query)
                 if not self._psk_ok(qs.get("psk", [""])[0] or
@@ -1061,13 +1281,46 @@ class Handler(BaseHTTPRequestHandler):
                                    "/admin/api/set_state",
                                    "/admin/api/release",
                                    "/admin/api/extend",
-                                   "/admin/api/delete"):
+                                   "/admin/api/delete",
+                                   "/portal/status", "/portal/pause",
+                                   "/portal/resume"):
                 return self._send(404, "text/plain", b"DENY unknown\n")
             raw = self._read_body()
             if raw is None:
                 return self._send(400, "text/plain", b"DENY malformed\n")
             fields = urllib.parse.parse_qs(
                 raw.decode("utf-8", "replace"))
+            if parsed.path in ("/portal/status", "/portal/pause",
+                               "/portal/resume"):
+                # Public customer surface: code-in-body (never URLs/logs),
+                # rate-limited, no PSK by design (code IS the credential).
+                if portal_code_limited(self.client_address[0]):
+                    return self._send_json(
+                        429, {"ok": False, "error": "rate_limited"})
+                code = (fields.get("code") or [""])[0]
+                try:
+                    db = DB.connect()
+                except BackendError as exc:
+                    log.error("backend unavailable: %s", exc)
+                    return self._send_json(503, {"ok": False,
+                                                 "error": "backend"})
+                try:
+                    if parsed.path == "/portal/status":
+                        body = portal_status(db, code)
+                    elif parsed.path == "/portal/pause":
+                        result = pause_voucher(db, code=code)
+                        body = {"ok": True, "paused": result["paused"],
+                                "remaining_seconds": result["remaining"]}
+                    else:
+                        body = resume_by_code(db, code)
+                except Exception:
+                    log.error("portal POST failed:\n%s",
+                              traceback.format_exc())
+                    return self._send_json(500, {"ok": False,
+                                                 "error": "error"})
+                finally:
+                    db.close()
+                return self._send_json(200, body)
             if parsed.path.startswith("/admin/api/"):
                 if not admin_ok((fields.get("psk") or [""])[0] or
                                 self.headers.get("X-PSK", "")):
@@ -1136,20 +1389,24 @@ class Handler(BaseHTTPRequestHandler):
             log.error("POST failed:\n%s", traceback.format_exc())
             return self._send(500, "text/plain", b"error\n")
 
-    def _send(self, code, ctype, body):
+    def _send(self, code, ctype, body, extra=None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        for key, value in (extra or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_json(self, code, obj):
+    def _send_json(self, code, obj, extra=None):
         try:
             body = json.dumps(obj).encode()
         except Exception:
             body = b'{"error":"error"}'
             code = 500
-        self._send(code, "application/json", body)
+        merged = dict(cors_headers(self))
+        merged.update(extra or {})
+        self._send(code, "application/json", body, merged)
 
     def _serve_admin_page(self):
         """Empty dashboard shell (no data, no key inside). All data calls

@@ -245,6 +245,170 @@ class ServerTests(unittest.TestCase):
                 self.assertNotIn(word, text)
 
 
+ORIGIN = "http://spa.test"
+
+
+class PortalHTTPTests(unittest.TestCase):
+    """Public /portal/* surface: CORS gating, code-in-body flows, generic
+    errors, and per-IP rate limits. Own server (PORTAL_ORIGIN set) so the
+    burst tests own their rate buckets. Runs after ServerTests (which never
+    touches /portal/*); methods are rate-ordered (test_5/6 trip 429 last)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        cls.db.close()
+        cls.port = free_port()
+        env = dict(os.environ, VOUCHER_DB=cls.db.name, VOUCHER_PSK=PSK,
+                   HOST="0.0.0.0", PORT=str(cls.port),
+                   PORTAL_ORIGIN=ORIGIN)
+        cls.proc = subprocess.Popen(
+            [sys.executable, API], env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            try:
+                urllib.request.urlopen(
+                    "http://127.0.0.1:%d/healthz" % cls.port, timeout=2)
+                break
+            except OSError:
+                time.sleep(0.2)
+        else:
+            cls.proc.terminate()
+            raise RuntimeError("portal test server did not start")
+        import sqlite3
+        conn = sqlite3.connect(cls.db.name)
+        conn.execute("INSERT INTO vouchers (code,total_secs,used_secs,state,"
+                     " bound_mac) VALUES ('HTTP-NEW',28800,0,'NEW',NULL),"
+                     " ('HTTP-PAUS',57600,3600,'PAUSED',"
+                     " 'AA:BB:CC:DD:EE:44'),"
+                     " ('HTTP-EXP',100,100,'EXPIRED',"
+                     " 'AA:BB:CC:DD:EE:45')")
+        conn.commit()
+        conn.close()
+        cls.base = "http://127.0.0.1:%d" % cls.port
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.proc.terminate()
+        cls.proc.wait()
+        os.unlink(cls.db.name)
+
+    def call(self, method, path, fields=None, origin=None):
+        data = (urllib.parse.urlencode(fields or {}).encode()
+                if method == "POST" else None)
+        req = urllib.request.Request(self.base + path, data, method=method,
+                                     headers={"Origin": origin} if origin
+                                     else {})
+        try:
+            resp = urllib.request.urlopen(req, timeout=10)
+            return resp.status, resp.read().decode(), dict(resp.headers)
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode(), dict(exc.headers)
+
+    def test_1_cors_preflight(self):
+        code, _, heads = self.call("OPTIONS", "/portal/status",
+                                   origin=ORIGIN)
+        self.assertEqual(code, 204)
+        self.assertEqual(heads.get("Access-Control-Allow-Origin"), ORIGIN)
+        self.assertIn("X-PSK", heads.get("Access-Control-Allow-Headers",
+                                         ""))
+        code, _, heads = self.call("OPTIONS", "/portal/status",
+                                   origin="http://evil.test")
+        self.assertEqual(code, 204)
+        self.assertIsNone(heads.get("Access-Control-Allow-Origin"))
+        code, _, _ = self.call("OPTIONS", "/claim", origin=ORIGIN)
+        self.assertEqual(code, 404)
+
+    def test_2_rates_public(self):
+        code, body, heads = self.call("GET", "/portal/rates")
+        self.assertEqual(code, 200)
+        tiers = json.loads(body)["tiers"]
+        self.assertEqual(len(tiers), 7)
+        self.assertEqual(tiers[0]["price_php"], 5)
+        self.assertIsNone(heads.get("Access-Control-Allow-Origin"))
+        code, _, heads = self.call("GET", "/portal/rates", origin=ORIGIN)
+        self.assertEqual(code, 200)
+        self.assertEqual(heads.get("Access-Control-Allow-Origin"), ORIGIN)
+
+    def test_3_status_pause_resume_flow(self):
+        code, body, heads = self.call(
+            "POST", "/portal/status", {"code": "HTTP-NEW"}, ORIGIN)
+        self.assertEqual(code, 200)
+        info = json.loads(body)
+        self.assertEqual((info["ok"], info["active"],
+                          info["remaining_seconds"]),
+                         (True, False, 28800))
+        self.assertEqual(heads.get("Access-Control-Allow-Origin"), ORIGIN)
+        for probe in ("NOPE-ZZZ", "bad!!", ""):
+            code, body, _ = self.call("POST", "/portal/status",
+                                      {"code": probe})
+            self.assertEqual(code, 200)
+            self.assertEqual(json.loads(body)["error"], "not_valid")
+        # bind over the EAP path, then drive state from the browser
+        data = urllib.parse.urlencode(
+            {"voucher": "HTTP-NEW", "mac": "AA:BB:CC:DD:EE:44",
+             "ip": "10.0.0.240", "token": "", "psk": PSK}).encode()
+        resp = urllib.request.urlopen(self.base + "/claim", data,
+                                      timeout=10)
+        self.assertTrue(resp.read().decode().startswith("ALLOW "))
+        code, body, _ = self.call("POST", "/portal/pause",
+                                  {"code": "HTTP-NEW"})
+        paused = json.loads(body)
+        self.assertEqual((paused["ok"], paused["paused"]), (True, True))
+        code, body, _ = self.call("POST", "/portal/resume",
+                                  {"code": "HTTP-NEW"})
+        resumed = json.loads(body)
+        self.assertEqual((resumed["ok"], resumed["resumed"]),
+                         (True, True))
+        self.assertGreater(resumed["remaining_seconds"], 0)
+        code, body, _ = self.call("POST", "/portal/resume",
+                                  {"code": "HTTP-NEW"})
+        again = json.loads(body)
+        self.assertEqual((again["ok"], again["resumed"]), (True, False))
+        code, body, _ = self.call("POST", "/portal/status",
+                                  {"code": "HTTP-NEW"})
+        self.assertTrue(json.loads(body)["active"])
+        code, body, _ = self.call("POST", "/portal/status",
+                                  {"code": "HTTP-EXP"})
+        self.assertTrue(json.loads(body)["expired"])
+        # codes are never echoed with device identity; no MAC anywhere
+        for _, b, _ in [(code, body, None)]:
+            self.assertNotIn("AA:BB", b)
+            for word in ("Traceback", ".py", "/tmp/"):
+                self.assertNotIn(word, b)
+
+    def test_4_portal_is_post_only(self):
+        for path in ("/portal/status", "/portal/pause", "/portal/resume"):
+            code, _, _ = self.call("GET", path + "?code=HTTP-NEW")
+            self.assertEqual(code, 404, path)
+
+    def test_5_code_bucket_trips_429(self):
+        tripped = False
+        for _ in range(10):
+            code, body, _ = self.call("POST", "/portal/status",
+                                      {"code": "HTTP-NEW"})
+            if code == 429:
+                tripped = True
+                self.assertEqual(json.loads(body)["error"],
+                                 "rate_limited")
+                break
+            self.assertEqual(code, 200)
+        self.assertTrue(tripped, "code bucket never tripped")
+
+    def test_6_global_bucket_trips_429(self):
+        tripped = False
+        for _ in range(40):
+            code, body, _ = self.call("GET", "/portal/rates")
+            if code == 429:
+                tripped = True
+                self.assertEqual(json.loads(body)["error"],
+                                 "rate_limited")
+                break
+            self.assertEqual(code, 200)
+        self.assertTrue(tripped, "global bucket never tripped")
+
+
 if __name__ == "__main__":
     print("LAN IP under test:", lan_ip())
     unittest.main(verbosity=2)
