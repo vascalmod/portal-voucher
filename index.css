@@ -163,30 +163,43 @@ body {
     color: var(--muted);
     letter-spacing: 1px;
 
-    margin-bottom: 6px;
+    margin-bottom: 10px;
 }
 
-.rate-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-
-    padding: 8px 2px;
-
-    border-bottom: 1px solid var(--line);
+.rates-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
 }
 
-.rate-row:last-child {
-    border-bottom: 0;
+.rate-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+
+    padding: 12px 8px;
+
+    text-align: center;
 }
 
-.rate-row strong {
-    font-size: 14px;
+.rate-card strong {
+    display: block;
+
+    font-size: 17px;
+    color: var(--primary);
 }
 
-.rate-row span {
-    font-size: 12px;
+.rate-card span {
+    display: block;
+
+    margin-top: 4px;
+
+    font-size: 11px;
     color: var(--muted);
+    line-height: 1.4;
+}
+
+.rate-wide {
+    grid-column: span 2;
 }
 
 /* Connection status */
@@ -318,8 +331,12 @@ body {
         font-size: 32px;
     }
 
-    .rate-row strong {
-        font-size: 13px;
+    .rates-grid {
+        gap: 8px;
+    }
+
+    .rate-card strong {
+        font-size: 15px;
     }
 }
 ```

@@ -231,16 +231,18 @@ header() {
 		button.busy .btn-spinner { display: inline-block; }
 		@keyframes vspin { to { transform: rotate(360deg); } }
 		.rates { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 14px; }
-		.rates-caption { text-align: center; font-size: 11px; color: var(--muted); letter-spacing: 1px; margin-bottom: 6px; }
-		.rate-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 2px; border-bottom: 1px solid var(--line); }
-		.rate-row:last-child { border-bottom: 0; }
-		.rate-row strong { font-size: 14px; }
-		.rate-row span { font-size: 12px; color: var(--muted); }
+		.rates-caption { text-align: center; font-size: 11px; color: var(--muted); letter-spacing: 1px; margin-bottom: 10px; }
+		.rates-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+		.rate-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px 8px; text-align: center; }
+		.rate-card strong { display: block; font-size: 17px; color: var(--primary); }
+		.rate-card span { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); line-height: 1.4; }
+		.rate-wide { grid-column: span 2; }
 		.note { margin-top: 16px; text-align: center; font-size: 11px; color: var(--muted); line-height: 1.5; }
 		@media (max-width: 400px) {
 			body { padding: 12px; }
 			.card { padding: 25px 18px; border-radius: 15px; }
-			.rate-row strong { font-size: 13px; }
+			.rates-grid { gap: 8px; }
+			.rate-card strong { font-size: 15px; }
 		}
 		</style>
 		</head>
@@ -315,13 +317,15 @@ login_form() {
 			$vjs
 			<div class=\"rates\">
 				<p class=\"rates-caption\">10 Mbps &mdash; ALL VOUCHERS</p>
-				<div class=\"rate-row\"><strong>&#8369;5</strong><span>8 Hours</span></div>
-				<div class=\"rate-row\"><strong>&#8369;10</strong><span>16 Hours</span></div>
-				<div class=\"rate-row\"><strong>&#8369;20</strong><span>36 Hours (1.5 Days)</span></div>
-				<div class=\"rate-row\"><strong>&#8369;50</strong><span>4 Days (96 Hours)</span></div>
-				<div class=\"rate-row\"><strong>&#8369;100</strong><span>9 Days</span></div>
-				<div class=\"rate-row\"><strong>&#8369;200</strong><span>19 Days</span></div>
-				<div class=\"rate-row\"><strong>&#8369;500</strong><span>30 Days (1 Month)</span></div>
+				<div class=\"rates-grid\">
+					<div class=\"rate-card\"><strong>&#8369;5</strong><span>8 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;10</strong><span>16 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;20</strong><span>36 Hours (1.5 Days)</span></div>
+					<div class=\"rate-card\"><strong>&#8369;50</strong><span>4 Days (96 Hours)</span></div>
+					<div class=\"rate-card\"><strong>&#8369;100</strong><span>9 Days</span></div>
+					<div class=\"rate-card\"><strong>&#8369;200</strong><span>19 Days</span></div>
+					<div class=\"rate-card rate-wide\"><strong>&#8369;500</strong><span>30 Days (1 Month)</span></div>
+				</div>
 			</div>
 		</section>
 	"
@@ -977,13 +981,15 @@ voucher_expired_page() {
 			$vjs
 			<div class=\"rates\">
 				<p class=\"rates-caption\">10 Mbps &mdash; ALL VOUCHERS</p>
-				<div class=\"rate-row\"><strong>&#8369;5</strong><span>8 Hours</span></div>
-				<div class=\"rate-row\"><strong>&#8369;10</strong><span>16 Hours</span></div>
-				<div class=\"rate-row\"><strong>&#8369;20</strong><span>36 Hours (1.5 Days)</span></div>
-				<div class=\"rate-row\"><strong>&#8369;50</strong><span>4 Days (96 Hours)</span></div>
-				<div class=\"rate-row\"><strong>&#8369;100</strong><span>9 Days</span></div>
-				<div class=\"rate-row\"><strong>&#8369;200</strong><span>19 Days</span></div>
-				<div class=\"rate-row\"><strong>&#8369;500</strong><span>30 Days (1 Month)</span></div>
+				<div class=\"rates-grid\">
+					<div class=\"rate-card\"><strong>&#8369;5</strong><span>8 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;10</strong><span>16 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;20</strong><span>36 Hours (1.5 Days)</span></div>
+					<div class=\"rate-card\"><strong>&#8369;50</strong><span>4 Days (96 Hours)</span></div>
+					<div class=\"rate-card\"><strong>&#8369;100</strong><span>9 Days</span></div>
+					<div class=\"rate-card\"><strong>&#8369;200</strong><span>19 Days</span></div>
+					<div class=\"rate-card rate-wide\"><strong>&#8369;500</strong><span>30 Days (1 Month)</span></div>
+				</div>
 			</div>
 		</section>
 	"
