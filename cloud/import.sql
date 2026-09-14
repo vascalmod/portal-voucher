@@ -1,9 +1,12 @@
 -- Cloud DB import for Supabase SQL editor (paste whole file, Run).
 -- Canonical source: backend/schema.sql (test_pg.py loads THAT file verbatim).
--- This copy is identical DDL + one live test voucher. Safe to re-run
--- (all CREATEs are IF NOT EXISTS; the seed is ON CONFLICT DO NOTHING).
--- No secrets in this file. Production vouchers are created separately
--- (voucher_admin.sh against the Supabase URL, or more INSERTs below).
+-- One-shot baseline: identical DDL + smoke-test voucher + least-privilege
+-- anon grants for the direct-Supabase admin dashboard. Safe to re-run
+-- (all CREATEs are IF NOT EXISTS; seed is ON CONFLICT DO NOTHING;
+-- GRANTs are idempotent). No secrets in this file. Production vouchers
+-- are created separately (voucher_admin.sh against the Supabase URL,
+-- the admin dashboard, or more INSERTs below).
+-- Worker/Railway/Python backend is unaffected (owner bypasses grants).
 
 CREATE TABLE IF NOT EXISTS vouchers (
     code         TEXT PRIMARY KEY,
@@ -40,3 +43,15 @@ CREATE INDEX IF NOT EXISTS idx_vouchers_bound ON vouchers (bound_mac);
 INSERT INTO vouchers (code, total_secs, used_secs, state) VALUES
  ('RAIL-TEST', 3600, 0, 'NEW')
 ON CONFLICT (code) DO NOTHING;
+
+-- Least-privilege anon access for the direct-Supabase admin dashboard
+-- (dashboard uses the anon key only; service_role never leaves Supabase).
+-- Strips any over-broad defaults (TRUNCATE/TRIGGER/REFERENCES) first.
+REVOKE ALL ON public.vouchers FROM anon;
+REVOKE ALL ON public.events FROM anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.vouchers TO anon;
+GRANT SELECT ON public.events TO anon;
+
+-- Verify (expect: vouchers_visible >= 1, events_visible >= 0):
+-- SELECT count(*) AS vouchers_visible FROM public.vouchers;
+-- SELECT count(*) AS events_visible FROM public.events;
