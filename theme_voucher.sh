@@ -319,12 +319,14 @@ login_form() {
 				<p class=\"rates-caption\">10 Mbps &mdash; ALL VOUCHERS</p>
 				<div class=\"rates-grid\">
 					<div class=\"rate-card\"><strong>&#8369;5</strong><span>8 Hours</span></div>
-					<div class=\"rate-card\"><strong>&#8369;10</strong><span>16 Hours</span></div>
-					<div class=\"rate-card\"><strong>&#8369;20</strong><span>36 Hours (1.5 Days)</span></div>
-					<div class=\"rate-card\"><strong>&#8369;50</strong><span>4 Days (96 Hours)</span></div>
-					<div class=\"rate-card\"><strong>&#8369;100</strong><span>9 Days</span></div>
-					<div class=\"rate-card\"><strong>&#8369;200</strong><span>19 Days</span></div>
-					<div class=\"rate-card rate-wide\"><strong>&#8369;500</strong><span>30 Days (1 Month)</span></div>
+					<div class=\"rate-card\"><strong>&#8369;10</strong><span>18 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;20</strong><span>1 Day 16 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;30</strong><span>2 Days 16 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;40</strong><span>4 Days</span></div>
+					<div class=\"rate-card\"><strong>&#8369;50</strong><span>5 Days</span></div>
+					<div class=\"rate-card\"><strong>&#8369;80</strong><span>8 Days 8 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;100</strong><span>11 Days</span></div>
+					<div class=\"rate-card rate-wide\"><strong>&#8369;120</strong><span>13 Days 8 Hours</span></div>
 				</div>
 			</div>
 		</section>
@@ -983,12 +985,14 @@ voucher_expired_page() {
 				<p class=\"rates-caption\">10 Mbps &mdash; ALL VOUCHERS</p>
 				<div class=\"rates-grid\">
 					<div class=\"rate-card\"><strong>&#8369;5</strong><span>8 Hours</span></div>
-					<div class=\"rate-card\"><strong>&#8369;10</strong><span>16 Hours</span></div>
-					<div class=\"rate-card\"><strong>&#8369;20</strong><span>36 Hours (1.5 Days)</span></div>
-					<div class=\"rate-card\"><strong>&#8369;50</strong><span>4 Days (96 Hours)</span></div>
-					<div class=\"rate-card\"><strong>&#8369;100</strong><span>9 Days</span></div>
-					<div class=\"rate-card\"><strong>&#8369;200</strong><span>19 Days</span></div>
-					<div class=\"rate-card rate-wide\"><strong>&#8369;500</strong><span>30 Days (1 Month)</span></div>
+					<div class=\"rate-card\"><strong>&#8369;10</strong><span>18 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;20</strong><span>1 Day 16 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;30</strong><span>2 Days 16 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;40</strong><span>4 Days</span></div>
+					<div class=\"rate-card\"><strong>&#8369;50</strong><span>5 Days</span></div>
+					<div class=\"rate-card\"><strong>&#8369;80</strong><span>8 Days 8 Hours</span></div>
+					<div class=\"rate-card\"><strong>&#8369;100</strong><span>11 Days</span></div>
+					<div class=\"rate-card rate-wide\"><strong>&#8369;120</strong><span>13 Days 8 Hours</span></div>
 				</div>
 			</div>
 		</section>

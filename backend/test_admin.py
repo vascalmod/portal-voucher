@@ -33,9 +33,9 @@ class AdminTests(unittest.TestCase):
             "INSERT INTO vouchers (code,total_secs,used_secs,state,"
             " bound_mac,last_ip) VALUES "
             "('SOLD-5',28800,0,'NEW','AA:BB:CC:DD:EE:01','10.0.0.2'),"
-            "('SOLD-10A',57600,0,'PAUSED','AA:BB:CC:DD:EE:02','10.0.0.3'),"
-            "('SOLD-10B',57600,100,'ACTIVE','AA:BB:CC:DD:EE:03','10.0.0.4'),"
-            "('STOCK-20',129600,0,'NEW',NULL,NULL),"
+            "('SOLD-10A',64800,0,'PAUSED','AA:BB:CC:DD:EE:02','10.0.0.3'),"
+            "('SOLD-10B',64800,100,'ACTIVE','AA:BB:CC:DD:EE:03','10.0.0.4'),"
+            "('STOCK-20',144000,0,'NEW',NULL,NULL),"
             "('CUSTOM-S',9999,0,'NEW','AA:BB:CC:DD:EE:04','10.0.0.5'),"
             "('CUSTOM-U',9999,0,'NEW',NULL,NULL)")
         self.db.execute(
@@ -57,12 +57,14 @@ class AdminTests(unittest.TestCase):
 
     def test_tier_prices_match_portal_card(self):
         self.assertEqual(api.tier_price(28800), 5)
-        self.assertEqual(api.tier_price(57600), 10)
-        self.assertEqual(api.tier_price(129600), 20)
-        self.assertEqual(api.tier_price(345600), 50)
-        self.assertEqual(api.tier_price(777600), 100)
-        self.assertEqual(api.tier_price(1641600), 200)
-        self.assertEqual(api.tier_price(2592000), 500)
+        self.assertEqual(api.tier_price(64800), 10)
+        self.assertEqual(api.tier_price(144000), 20)
+        self.assertEqual(api.tier_price(230400), 30)
+        self.assertEqual(api.tier_price(345600), 40)
+        self.assertEqual(api.tier_price(432000), 50)
+        self.assertEqual(api.tier_price(720000), 80)
+        self.assertEqual(api.tier_price(950400), 100)
+        self.assertEqual(api.tier_price(1152000), 120)
         self.assertIsNone(api.tier_price(9999))
         self.assertIsNone(api.tier_price("junk"))
 
@@ -81,9 +83,9 @@ class AdminTests(unittest.TestCase):
         self.assertEqual(s["sold"], 4)
         self.assertEqual(s["unsold"], 2)
         tiers = {t["total_secs"]: t for t in s["by_tier"]}
-        self.assertEqual(tiers[57600]["revenue_php"], 20)
+        self.assertEqual(tiers[64800]["revenue_php"], 20)
         self.assertEqual(tiers[9999]["price_php"], None)
-        self.assertEqual(tiers[129600]["unsold"], 1)
+        self.assertEqual(tiers[144000]["unsold"], 1)
         self.assertEqual(s["by_state"]["NEW"], 4)
         self.assertEqual(s["active_now"], 1)
         self.assertGreater(s["liability_secs"], 0)
@@ -116,7 +118,7 @@ class AdminTests(unittest.TestCase):
                          "bad_secs")
         self.assertEqual(api.admin_create(self.db, "SOLD-5", 28800)
                          ["error"], "exists")
-        r = api.admin_create(self.db, "new-99", 57600)
+        r = api.admin_create(self.db, "new-99", 64800)
         self.assertTrue(r["ok"])
         self.assertEqual(r["price_php"], 10)
         row = self.db.row("SELECT * FROM vouchers WHERE code=%s",
@@ -167,7 +169,7 @@ class AdminTests(unittest.TestCase):
                                           99999999)["error"], "bad_secs")
         r = api.admin_extend(self.db, "STOCK-20", 3600)
         self.assertTrue(r["ok"])
-        self.assertEqual(r["total_secs"], 129600 + 3600)
+        self.assertEqual(r["total_secs"], 144000 + 3600)
         self.assertEqual(r["state"], "NEW")
         # EXPIRED flips to PAUSED so the bound device can resume.
         self.db.execute("UPDATE vouchers SET state='EXPIRED',"

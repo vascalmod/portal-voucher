@@ -138,8 +138,8 @@ DOWN_KBPS = int(os.environ.get("DOWN_KBPS", "10240"))
 # Canonical rate tiers (MUST mirror the portal price card in theme_voucher.sh
 # login_form()/voucher_expired_page(): total_secs -> PHP pesos. Sold revenue
 # and inventory valuation derive from this map; no price column exists.
-RATE_TIERS = {28800: 5, 57600: 10, 129600: 20, 345600: 50,
-              777600: 100, 1641600: 200, 2592000: 500}
+RATE_TIERS = {28800: 5, 64800: 10, 144000: 20, 230400: 30, 345600: 40,
+              432000: 50, 720000: 80, 950400: 100, 1152000: 120}
 MAX_TOTAL_SECS = 5184000  # 60-day cap for admin create/extend
 
 # Public customer surface (/portal/*): browser-safe, NO PSK. Trust model:
@@ -711,10 +711,11 @@ def _dicts(cur):
 def portal_rates():
     """Public tier list (pure function of RATE_TIERS, no DB). Shape matches
     what the React SPA renders; labels mirror the EAP price card."""
-    labels = {28800: "8 Hours", 57600: "16 Hours",
-              129600: "36 Hours (1.5 Days)", 345600: "4 Days (96 Hours)",
-              777600: "9 Days", 1641600: "19 Days",
-              2592000: "30 Days (1 Month)"}
+    labels = {28800: "8 Hours", 64800: "18 Hours",
+              144000: "1 Day 16 Hours", 230400: "2 Days 16 Hours",
+              345600: "4 Days", 432000: "5 Days",
+              720000: "8 Days 8 Hours", 950400: "11 Days",
+              1152000: "13 Days 8 Hours"}
     return {"tiers": [
         {"total_secs": t, "price_php": p,
          "label": labels.get(t, "%ds" % t)}

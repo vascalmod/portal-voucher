@@ -516,13 +516,20 @@ class PortalTests(unittest.TestCase):
 
     def test_rates_shape_matches_portal_card(self):
         r = api.portal_rates()
-        self.assertEqual(len(r["tiers"]), 7)
+        self.assertEqual(len(r["tiers"]), 9)
         secs = [t["total_secs"] for t in r["tiers"]]
         self.assertEqual(secs, sorted(secs))
         by_secs = {t["total_secs"]: t for t in r["tiers"]}
         self.assertEqual(by_secs[28800]["price_php"], 5)
-        self.assertEqual(by_secs[2592000]["price_php"], 500)
-        self.assertEqual(by_secs[129600]["label"], "36 Hours (1.5 Days)")
+        self.assertEqual(by_secs[64800]["price_php"], 10)
+        self.assertEqual(by_secs[144000]["price_php"], 20)
+        self.assertEqual(by_secs[230400]["price_php"], 30)
+        self.assertEqual(by_secs[345600]["price_php"], 40)
+        self.assertEqual(by_secs[432000]["price_php"], 50)
+        self.assertEqual(by_secs[720000]["price_php"], 80)
+        self.assertEqual(by_secs[950400]["price_php"], 100)
+        self.assertEqual(by_secs[1152000]["price_php"], 120)
+        self.assertEqual(by_secs[144000]["label"], "1 Day 16 Hours")
 
     def test_status_snapshots(self):
         self.assertEqual(api.portal_status(self.db, "NOPE")["error"],

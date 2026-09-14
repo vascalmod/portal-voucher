@@ -153,8 +153,8 @@ DENIED_OUT=$(render_flow "DENY unknown" "authenticated")
 # --- 1. login view unchanged ---
 check "login-has-voucher-input" 'printf "%s" "$LOGIN_OUT" | grep -q "name=\"voucher\""'
 check "login-has-connect" 'printf "%s" "$LOGIN_OUT" | grep -q "CONNECT"'
-check "login-has-rates" 'printf "%s" "$LOGIN_OUT" | grep -q "rate-card" && [ "$(printf "%s" "$LOGIN_OUT" | grep -o "<div class=\"rate-card" | wc -l)" -eq 7 ]'
-check "login-rates-tiers" 'for t in "8 Hours" "16 Hours" "36 Hours (1.5 Days)" "4 Days (96 Hours)" "9 Days" "19 Days" "30 Days (1 Month)"; do printf "%s" "$LOGIN_OUT" | grep -q "$t" || exit 1; done'
+check "login-has-rates" 'printf "%s" "$LOGIN_OUT" | grep -q "rate-card" && [ "$(printf "%s" "$LOGIN_OUT" | grep -o "<div class=\"rate-card" | wc -l)" -eq 9 ]'
+check "login-rates-tiers" 'for t in "8 Hours" "18 Hours" "1 Day 16 Hours" "2 Days 16 Hours" "4 Days" "5 Days" "8 Days 8 Hours" "11 Days" "13 Days 8 Hours"; do printf "%s" "$LOGIN_OUT" | grep -q "$t" || exit 1; done'
 check "login-rates-speed" 'printf "%s" "$LOGIN_OUT" | grep -q "10 Mbps"'
 check "login-rates-wide" '[ "$(printf "%s" "$LOGIN_OUT" | grep -o "<div class=\"rate-card rate-wide\"" | wc -l)" -eq 1 ]'
 check "login-has-fas" 'printf "%s" "$LOGIN_OUT" | grep -q "name=\"fas\""'
@@ -284,7 +284,7 @@ check "expired-not-invalid" '! printf "%s" "$DENYOUT" | grep -q "not valid"'
 check "expired-logged" 'printf "%s" "$DENYLOGOUT" | grep -q "why=expired"'
 check "expired-inline-login" 'printf "%s" "$DENYOUT" | grep -q "name=\"voucher\""'
 EXPIRED_PAGE_OUT=$( ( load_theme; setup_stubs; fas="TESTFAS" gatewayfqdn="status.client"; gatewayname="TestGW" clientip="10.0.0.200" clientmac="AA:BB:CC:DD:EE:01"; header; voucher_expired_page ) 2>/dev/null )
-check "expired-page-rates" 'printf "%s" "$EXPIRED_PAGE_OUT" | grep -q "rate-card" && [ "$(printf "%s" "$EXPIRED_PAGE_OUT" | grep -o "<div class=\"rate-card" | wc -l)" -eq 7 ]'
+check "expired-page-rates" 'printf "%s" "$EXPIRED_PAGE_OUT" | grep -q "rate-card" && [ "$(printf "%s" "$EXPIRED_PAGE_OUT" | grep -o "<div class=\"rate-card" | wc -l)" -eq 9 ]'
 render_denied "paused"
 check "paused-title" 'printf "%s" "$DENYOUT" | grep -q "VOUCHER IN USE"'
 check "paused-text" 'printf "%s" "$DENYOUT" | grep -q "another device"'
