@@ -1,0 +1,23 @@
+# Slim the Railway/Nixpacks build context to API-runtime needs only.
+# EAP shell scripts, docs, plans, and test harnesses stay in git for the
+# portal workflow but never enter the cloud image.
+client_params_voucher.sh
+custombinauth.voucher.sh
+theme_voucher.sh
+voucher_admin.sh
+status.html
+index.html
+index.css
+STAGE1_*.md
+STAGE2*.md
+chatgpt_reply/
+docs/
+tests/
+.venv/
+__pycache__/
+*.pyc
+*.db
+*.log
+nohup.out
+.env*
+.git/
