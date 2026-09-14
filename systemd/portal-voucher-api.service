@@ -1,0 +1,24 @@
+[Unit]
+Description=Wi-Fi Voucher API (openNDS captive-portal backend)
+Documentation=https://github.com/vascalmod/openNDS-docs
+Wants=network-online.target postgresql.service
+After=network-online.target postgresql.service
+
+[Service]
+Type=simple
+User=gib
+Group=gib
+WorkingDirectory=/home/gib/WorkSpace/portal_eap
+# Secrets live ONLY here (0600); never duplicated into this unit.
+EnvironmentFile=/home/gib/WorkSpace/portal_eap/.env.production
+ExecStart=/home/gib/WorkSpace/portal_eap/.venv/bin/python /home/gib/WorkSpace/portal_eap/backend/api.py
+Restart=on-failure
+RestartSec=3
+# Hardening (validated against the app: venv reads, env-file read,
+# journald logging, :8080 bind, PostgreSQL TCP all exercised in Stage 2B).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

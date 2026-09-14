@@ -1,0 +1,5 @@
+# Railway/Nixpacks Python dependencies for backend/api.py.
+# api.py itself is stdlib-only; psycopg v3 is required only when DATABASE_URL
+# uses a postgres scheme (production/Supabase). Pinned to the locally proven
+# version (venv: Python 3.14.4, psycopg 3.3.5).
+psycopg[binary]==3.3.5

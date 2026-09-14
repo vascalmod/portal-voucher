@@ -1,0 +1,11 @@
+# Local secrets and runtime artifacts — never commit these.
+.env*
+*.db
+*.log
+__pycache__/
+*.pyc
+nohup.out
+.venv/
+.railway/
+tmp_*.txt
+/tmp/
