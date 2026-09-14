@@ -52,7 +52,7 @@ class ClaimTests(unittest.TestCase):
         self.assertEqual(r["decision"], "ALLOW")
         self.assertEqual(r["remaining"], 21600)
         self.assertIsNone(r["evict"])
-        self.assertIn("ALLOW 21600 10240 10240", api.format_claim(r))
+        self.assertIn("ALLOW 21600 0 0", api.format_claim(r))
 
     def test_unknown_deny(self):
         r = api.claim_voucher(self.db, "PORTAL-TEST", "AA:BB:CC:DD:EE:99",
@@ -329,7 +329,7 @@ class ResumeTests(unittest.TestCase):
         self.assertEqual(r["decision"], "ALLOW")
         self.assertEqual(r["reason"], "resumed")
         self.assertEqual(r["remaining"], 21500)  # 100s consumed, gap ignored
-        self.assertIn("ALLOW 21500 10240 10240", api.format_claim(r))
+        self.assertIn("ALLOW 21500 0 0", api.format_claim(r))
         row = self.db.row("SELECT state, used_secs, total_secs, resume_ts,"
                           " last_ip FROM vouchers WHERE code=%s", ("TEST-6H",))
         self.assertEqual(row["state"], "ACTIVE")

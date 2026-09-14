@@ -694,7 +694,7 @@ voucher_status_page() {
 				</div>
 				<div class=\"info-row\">
 					<span>Speed</span>
-					<strong>10 Mbps</strong>
+					<strong>Unlimited</strong>
 				</div>
 				<div class=\"info-row\">
 					<span>Status</span>
@@ -817,7 +817,7 @@ voucher_paused_page() {
 				</div>
 				<div class=\"info-row\">
 					<span>Speed</span>
-					<strong>10 Mbps</strong>
+					<strong>Unlimited</strong>
 				</div>
 				<div class=\"info-row\">
 					<span>Status</span>

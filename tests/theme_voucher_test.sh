@@ -155,7 +155,7 @@ check "login-has-voucher-input" 'printf "%s" "$LOGIN_OUT" | grep -q "name=\"vouc
 check "login-has-connect" 'printf "%s" "$LOGIN_OUT" | grep -q "CONNECT"'
 check "login-has-rates" 'printf "%s" "$LOGIN_OUT" | grep -q "rate-card" && [ "$(printf "%s" "$LOGIN_OUT" | grep -o "<div class=\"rate-card" | wc -l)" -eq 9 ]'
 check "login-rates-tiers" 'for t in "8 Hours" "18 Hours" "1 Day 16 Hours" "2 Days 16 Hours" "4 Days" "5 Days" "8 Days 8 Hours" "11 Days" "13 Days 8 Hours"; do printf "%s" "$LOGIN_OUT" | grep -q "$t" || exit 1; done'
-check "login-rates-speed" 'printf "%s" "$LOGIN_OUT" | grep -q "10 Mbps"'
+check "login-rates-speed" 'printf "%s" "$LOGIN_OUT" | grep -q "UNLIMITED SPEED"'
 check "login-rates-wide" '[ "$(printf "%s" "$LOGIN_OUT" | grep -o "<div class=\"rate-card rate-wide\"" | wc -l)" -eq 1 ]'
 check "login-has-fas" 'printf "%s" "$LOGIN_OUT" | grep -q "name=\"fas\""'
 check "login-no-thankyou" '! printf "%s" "$LOGIN_OUT" | grep -q "VOUCHER RECEIVED"'

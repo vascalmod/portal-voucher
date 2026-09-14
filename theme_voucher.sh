@@ -316,7 +316,7 @@ login_form() {
 			</form>
 			$vjs
 			<div class=\"rates\">
-				<p class=\"rates-caption\">10 Mbps &mdash; ALL VOUCHERS</p>
+				<p class=\"rates-caption\">UNLIMITED SPEED &mdash; ALL VOUCHERS</p>
 				<div class=\"rates-grid\">
 					<div class=\"rate-card\"><strong>&#8369;5</strong><span>8 Hours</span></div>
 					<div class=\"rate-card\"><strong>&#8369;10</strong><span>18 Hours</span></div>
@@ -982,7 +982,7 @@ voucher_expired_page() {
 			</form>
 			$vjs
 			<div class=\"rates\">
-				<p class=\"rates-caption\">10 Mbps &mdash; ALL VOUCHERS</p>
+				<p class=\"rates-caption\">UNLIMITED SPEED &mdash; ALL VOUCHERS</p>
 				<div class=\"rates-grid\">
 					<div class=\"rate-card\"><strong>&#8369;5</strong><span>8 Hours</span></div>
 					<div class=\"rate-card\"><strong>&#8369;10</strong><span>18 Hours</span></div>

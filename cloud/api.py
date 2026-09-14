@@ -101,8 +101,8 @@ PORTAL_ORIGIN (optional; comma-separated CORS allowlist for browser SPAs
 calling /portal/* and /admin/api/*; empty = no browser access),
 HOST (default 127.0.0.1; production HOST=0.0.0.0 or the Ubuntu LAN IP — the API
 is an internal EAP-to-Ubuntu service, never Internet-facing),
-PORT (default 8080), UP_KBPS / DOWN_KBPS (default 10240 = 10 Mbps; EAP
-calibration step confirms the mapping).
+PORT (default 8080), UP_KBPS / DOWN_KBPS (default 0 = unlimited: the EAP
+applies no per-client shaping when both are 0; set env values to cap speed).
 
 Usage accounting (only ACTIVE time is consumed): an ACTIVE row with resume_ts
 accrues on claim/pause transitions (capped at its previous balance, so reboot
@@ -132,8 +132,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CODE_RE = re.compile(r"^[A-Z0-9-]{4,20}$")
 
-UP_KBPS = int(os.environ.get("UP_KBPS", "10240"))
-DOWN_KBPS = int(os.environ.get("DOWN_KBPS", "10240"))
+UP_KBPS = int(os.environ.get("UP_KBPS", "0"))
+DOWN_KBPS = int(os.environ.get("DOWN_KBPS", "0"))
 
 # Canonical rate tiers (MUST mirror the portal price card in theme_voucher.sh
 # login_form()/voucher_expired_page(): total_secs -> PHP pesos. Sold revenue

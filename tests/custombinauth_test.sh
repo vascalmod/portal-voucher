@@ -79,7 +79,7 @@ run_case() {
 }
 
 run_case "allow-fresh" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 0 360 1
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 0 360 1
 run_case "deny-unknown" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
 	"voucher=NOPE-1234" "DENY unknown" 1 0 1
 run_case "deny-bad-charset" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
@@ -91,11 +91,11 @@ run_case "deny-backend-down" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
 run_case "deny-bad-reply" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
 	"voucher=TEST-6H" "ALLOW lots fast faster" 1 0 1
 run_case "ceil-21601-to-361" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"voucher=TEST-6H" "ALLOW 21601 10240 10240" 0 361 1
+	"voucher=TEST-6H" "ALLOW 21601 0 0" 0 361 1
 run_case "deauth-passthrough" deauth AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
 	"voucher=TEST-6H" "" 0 0 0
 run_case "lowercase-normalized" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"voucher=test-6h" "ALLOW 21600 10240 10240" 0 360 1
+	"voucher=test-6h" "ALLOW 21600 0 0" 0 360 1
 
 # --- strict reply-shape vectors (all must DENY) ---
 run_case "reply-bare-ALLOW" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
@@ -111,24 +111,24 @@ run_case "reply-alpha-down" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
 run_case "reply-random" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
 	"voucher=TEST-6H" "RANDOM" 1 0 1
 run_case "reply-zero-remaining" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"voucher=TEST-6H" "ALLOW 0 10240 10240" 1 0 1
+	"voucher=TEST-6H" "ALLOW 0 0 0" 1 0 1
 run_case "reply-oversized-remaining" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"voucher=TEST-6H" "ALLOW 99999999 10240 10240" 1 0 1
+	"voucher=TEST-6H" "ALLOW 99999999 0 0" 1 0 1
 run_case "reply-oversized-rate" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
 	"voucher=TEST-6H" "ALLOW 21600 9999999 10240" 1 0 1
 run_case "reply-bad-evict-mac" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240 EVICT bogus" 1 0 1
+	"voucher=TEST-6H" "ALLOW 21600 0 0 EVICT bogus" 1 0 1
 run_case "reply-wrong-fifth" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240 EXTRA x" 1 0 1
+	"voucher=TEST-6H" "ALLOW 21600 0 0 EXTRA x" 1 0 1
 run_case "reply-five-fields" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240 extra" 1 0 1
+	"voucher=TEST-6H" "ALLOW 21600 0 0 extra" 1 0 1
 
 # --- secondary-method gate (action values as rewritten by binauth_log.sh:
 # ndsctl_auth arrives as "auth"; deauth variants arrive ending in "deauth").
 # Positional slots beyond $2/$custom are unreliable here; the script must use
 # neutral metadata (strict-or-empty MAC, empty ip/token).
 run_case "auth-valid" auth AA:BB:CC:DD:EE:01 1789264044 1789350444 \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 0 360 1
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 0 360 1
 run_case "auth-unknown" auth AA:BB:CC:DD:EE:01 1789264044 1789350444 \
 	"voucher=NOPE-1234" "DENY unknown" 1 0 1
 run_case "auth-no-custom" auth AA:BB:CC:DD:EE:01 1789264044 1789350444 \
@@ -136,7 +136,7 @@ run_case "auth-no-custom" auth AA:BB:CC:DD:EE:01 1789264044 1789350444 \
 run_case "auth-malformed-voucher" auth AA:BB:CC:DD:EE:01 1789264044 1789350444 \
 	"voucher=A;B" "" 1 0 0
 run_case "client_auth-valid" client_auth AA:BB:CC:DD:EE:01 x y \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 0 360 1
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 0 360 1
 run_case "timeout_deauth-passthrough" timeout_deauth AA:BB:CC:DD:EE:01 x y \
 	"voucher=TEST-6H" "" 0 0 0
 run_case "shutdown_deauth-passthrough" shutdown_deauth AA:BB:CC:DD:EE:01 x y \
@@ -144,32 +144,32 @@ run_case "shutdown_deauth-passthrough" shutdown_deauth AA:BB:CC:DD:EE:01 x y \
 
 # --- strict ip/token vectors (pre-network rejects: calls must stay 0) ---
 run_case "bad-ip-octet" auth_client AA:BB:CC:DD:EE:01 10.0.0.999 tok1 \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 1 0 0
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 1 0 0
 run_case "bad-ip-inject" auth_client AA:BB:CC:DD:EE:01 '10.0.0.1&evil=1' tok1 \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 1 0 0
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 1 0 0
 run_case "bad-ip-short" auth_client AA:BB:CC:DD:EE:01 10.0.0 tok1 \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 1 0 0
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 1 0 0
 run_case "bad-token-amp" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 'ab&cd' \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 1 0 0
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 1 0 0
 run_case "bad-token-eq" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 'ab=cd' \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 1 0 0
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 1 0 0
 run_case "bad-token-pct" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 'ab%cd' \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 1 0 0
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 1 0 0
 run_case "bad-token-empty" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 '' \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 1 0 0
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 1 0 0
 LONGTOK=$(head -c 129 /dev/zero | tr '\0' 'a')
 run_case "bad-token-long" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 "$LONGTOK" \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 1 0 0
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 1 0 0
 run_case "ok-token-punct" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 'tok-1_2.3:4' \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 0 360 1
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 0 360 1
 
 # --- non-strict MAC degrades to empty metadata, claim still proceeds ---
 run_case "loose-mac-emptied" auth_client AABBCCDDEEFF 10.0.0.200 tok1 \
-	"voucher=TEST-6H" "ALLOW 21600 10240 10240" 0 360 1
+	"voucher=TEST-6H" "ALLOW 21600 0 0" 0 360 1
 
 # evict hook: different old MAC must be passed to daemon_deauth exactly once
 : > "$EVICT_FILE"
-printf '%s' "ALLOW 18000 10240 10240 EVICT AA:BB:CC:DD:EE:09" > "$RESPFILE"
+printf '%s' "ALLOW 18000 0 0 EVICT AA:BB:CC:DD:EE:09" > "$RESPFILE"
 (
 	action="auth_client"
 	custom=$(b64 "voucher=TEST-6H")
@@ -190,7 +190,7 @@ fi
 # neutral path with a stranger-owned binding must ABSTAIN (defaults kept,
 # no evict hook), never move it: only auth_client may rebind.
 : > "$EVICT_FILE"
-printf '%s' "ALLOW 18000 10240 10240 EVICT AA:BB:CC:DD:EE:09" > "$RESPFILE"
+printf '%s' "ALLOW 18000 0 0 EVICT AA:BB:CC:DD:EE:09" > "$RESPFILE"
 (
 	action="auth"
 	custom=$(b64 "voucher=TEST-6H")
@@ -209,15 +209,15 @@ fi
 
 # --- codeless resume marker (custom decodes to exactly "resume") ---
 run_case "resume-allow" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"resume" "ALLOW 18000 10240 10240" 0 300 1
+	"resume" "ALLOW 18000 0 0" 0 300 1
 run_case "resume-deny-nomatch" auth_client AA:BB:CC:DD:EE:99 10.0.0.209 tok9 \
 	"resume" "DENY nomatch" 1 0 1
 run_case "resume-smuggle-eq-denied" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"resume=1" "ALLOW 18000 10240 10240" 1 0 0
+	"resume=1" "ALLOW 18000 0 0" 1 0 0
 run_case "resume-smuggle-suffix-denied" auth_client AA:BB:CC:DD:EE:01 10.0.0.200 tok1 \
-	"resumeX" "ALLOW 18000 10240 10240" 1 0 0
+	"resumeX" "ALLOW 18000 0 0" 1 0 0
 run_case "resume-secondary-allow" auth AA:BB:CC:DD:EE:01 1789264044 1789350444 \
-	"resume" "ALLOW 18000 10240 10240" 0 300 1
+	"resume" "ALLOW 18000 0 0" 0 300 1
 run_case "resume-secondary-deny" auth AA:BB:CC:DD:EE:01 1789264044 1789350444 \
 	"resume" "DENY expired" 1 0 1
 run_case "resume-deauth-passthrough" client_deauth AA:BB:CC:DD:EE:01 x y \
@@ -225,7 +225,7 @@ run_case "resume-deauth-passthrough" client_deauth AA:BB:CC:DD:EE:01 x y \
 (
 	name="resume-posts-to-resume-endpoint-no-voucher"
 	URLFILE=$(mktemp); export URLFILE
-	printf '%s' "ALLOW 18000 10240 10240" > "$RESPFILE"
+	printf '%s' "ALLOW 18000 0 0" > "$RESPFILE"
 	(
 		action="auth_client"
 		custom=$(b64 "resume")

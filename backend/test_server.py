@@ -120,7 +120,7 @@ class ServerTests(unittest.TestCase):
                                           "ip": "10.0.0.200", "token": "tok1",
                                           "psk": PSK})
             self.assertEqual(code, 200, base)
-            self.assertTrue(body.startswith("ALLOW 21600 10240 10240"), body)
+            self.assertTrue(body.startswith("ALLOW 21600 0 0"), body)
             bodies.add(body)
         # second device presenting the same code is DENIED (strict binding:
         # bound vouchers never move; the bound device resumes via /resume)
@@ -150,7 +150,7 @@ class ServerTests(unittest.TestCase):
                                              "token": "tok9", "psk": PSK})
         self.assertEqual(code, 200)
         self.assertTrue(body.startswith("ALLOW "), body)
-        self.assertIn("10240 10240", body)
+        self.assertIn("0 0", body)
         self.assertNotIn("SRV-RESUME", body)
         # wrong MAC cannot resume; nothing leaks
         code, body = self.post_resume(base, {"mac": "AA:BB:CC:DD:EE:99",
@@ -324,7 +324,7 @@ class PortalHTTPTests(unittest.TestCase):
         code, body, heads = self.call("GET", "/portal/rates")
         self.assertEqual(code, 200)
         tiers = json.loads(body)["tiers"]
-        self.assertEqual(len(tiers), 7)
+        self.assertEqual(len(tiers), 9)
         self.assertEqual(tiers[0]["price_php"], 5)
         self.assertIsNone(heads.get("Access-Control-Allow-Origin"))
         code, _, heads = self.call("GET", "/portal/rates", origin=ORIGIN)
