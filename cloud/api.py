@@ -37,7 +37,34 @@ only the EAP claimant does):
       for status display. NEVER includes the voucher code (display hint only;
       resuming still requires the code). POST variant keeps the PSK in the
       body (EAP uses POST).
-  GET  /healthz -> ok
+   GET  /healthz -> ok
+
+Admin dashboard (operator only, separate ADMIN_PSK; EAP key cannot admin):
+   GET  /admin                 -> single-file dashboard UI (no data inside;
+       needs the admin key, kept in browser sessionStorage, sent per call).
+       Served openly ONLY as an empty shell; every data call below is gated.
+   GET  /admin/api/stats       -> JSON {revenue_php, sold, unsold, by_tier,
+       by_state, liability_secs, active_now}
+   GET  /admin/api/vouchers?state=&q=&limit=&offset= -> JSON {total, rows[]}
+       (rows carry live remaining + tier price; codes visible: admin channel)
+   GET  /admin/api/events?limit= -> JSON {rows[]} latest decisions first
+   POST /admin/api/create      -> {code, total_secs} (NEW row; tier implied)
+   POST /admin/api/set_state   -> {code, state: NEW|DISABLED} (NEW only when
+       never used; DISABLED from any state; used rows re-enable to PAUSED)
+   POST /admin/api/release     -> {code} clears bound_mac (non-ACTIVE only;
+       next claim rebinds; the documented operator escape hatch)
+   POST /admin/api/extend      -> {code, add_secs} grows total_secs (cap 60d;
+       EXPIRED flips to PAUSED so the bound device can resume)
+   POST /admin/api/delete      -> {code} removes NEW+never-bound rows only
+   Auth for all /admin/api/*: POST field psk, header X-PSK, or ?psk=
+   (compare_digest; wrong/missing -> 403 JSON, generic). Every mutation
+   writes an events row (decision ADMIN) as an audit trail.
+
+Profit model (NO schema change): canonical RATE_TIERS map total_secs to
+pesos (mirrors the portal price card). Sold = bound_mac IS NOT NULL
+(first claim binds = sale). revenue = SUM(tier price over sold rows);
+non-tier totals count as custom (tracked, priced unknown). Liability =
+live remaining seconds across ACTIVE rows (settled, capped).
 
 Backend selection (explicit; NEVER silent):
   DATABASE_URL set (postgres scheme) -> PostgreSQL ONLY via the `psycopg` v3
@@ -49,6 +76,7 @@ Backend selection (explicit; NEVER silent):
   Neither set -> refuse startup with a clear error.
 
 Config env: DATABASE_URL, VOUCHER_DB, VOUCHER_PSK (required; compare_digest),
+ADMIN_PSK (optional; enables /admin/api/* + marks dashboard live),
 HOST (default 127.0.0.1; production HOST=0.0.0.0 or the Ubuntu LAN IP — the API
 is an internal EAP-to-Ubuntu service, never Internet-facing),
 PORT (default 8080), UP_KBPS / DOWN_KBPS (default 10240 = 10 Mbps; EAP
@@ -82,6 +110,13 @@ CODE_RE = re.compile(r"^[A-Z0-9-]{4,20}$")
 
 UP_KBPS = int(os.environ.get("UP_KBPS", "10240"))
 DOWN_KBPS = int(os.environ.get("DOWN_KBPS", "10240"))
+
+# Canonical rate tiers (MUST mirror the portal price card in theme_voucher.sh
+# login_form()/voucher_expired_page(): total_secs -> PHP pesos. Sold revenue
+# and inventory valuation derive from this map; no price column exists.
+RATE_TIERS = {28800: 5, 57600: 10, 129600: 20, 345600: 50,
+              777600: 100, 1641600: 200, 2592000: 500}
+MAX_TOTAL_SECS = 5184000  # 60-day cap for admin create/extend
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 VOUCHER_DB = os.environ.get("VOUCHER_DB", "")
@@ -557,6 +592,274 @@ def session_info_by_mac(db, mac, now=None):
             "expired": False}
 
 
+def tier_price(total_secs):
+    """Portal tier price in PHP for a total_secs value, or None (custom)."""
+    try:
+        return RATE_TIERS.get(int(total_secs))
+    except (TypeError, ValueError):
+        return None
+
+
+def admin_ok(given):
+    """Admin gate: separate key from the EAP path, live-read for tests."""
+    psk = os.environ.get("ADMIN_PSK", "")
+    return bool(psk) and hmac.compare_digest(str(given or ""), psk)
+
+
+def _dicts(cur):
+    return [dict(r) for r in cur.fetchall()]
+
+
+def admin_stats(db, now=None):
+    """Profit + inventory snapshot. Read-only. Portable SQL only."""
+    now = time.time() if now is None else float(now)
+    by_state = {r["state"]: r["n"] for r in _dicts(db.execute(
+        "SELECT state, COUNT(*) AS n FROM vouchers GROUP BY state"))}
+    sold = _dicts(db.execute(
+        "SELECT total_secs, COUNT(*) AS n FROM vouchers"
+        " WHERE bound_mac IS NOT NULL GROUP BY total_secs"))
+    unsold = _dicts(db.execute(
+        "SELECT total_secs, COUNT(*) AS n FROM vouchers"
+        " WHERE bound_mac IS NULL GROUP BY total_secs"))
+    by_tier, revenue, sold_n, unsold_n = [], 0, 0, 0
+    buckets = {}
+    for r in sold + unsold:
+        b = buckets.setdefault(int(r["total_secs"]),
+                               {"sold": 0, "unsold": 0})
+        buckets[int(r["total_secs"])] = b
+    for r in sold:
+        buckets[int(r["total_secs"])]["sold"] = int(r["n"])
+    for r in unsold:
+        buckets[int(r["total_secs"])]["unsold"] = int(r["n"])
+    for total in sorted(buckets):
+        b = buckets[total]
+        price = tier_price(total)
+        rev = (price or 0) * b["sold"]
+        revenue += rev
+        sold_n += b["sold"]
+        unsold_n += b["unsold"]
+        by_tier.append({"total_secs": total, "price_php": price,
+                        "sold": b["sold"], "unsold": b["unsold"],
+                        "revenue_php": rev})
+    liability = 0
+    active_now = 0
+    for r in _dicts(db.execute(
+            "SELECT * FROM vouchers WHERE state='ACTIVE'")):
+        _, remaining = _settle(r, now)
+        if remaining > 0:
+            active_now += 1
+            liability += remaining
+    return {"revenue_php": revenue, "sold": sold_n, "unsold": unsold_n,
+            "by_tier": by_tier, "by_state": by_state,
+            "liability_secs": liability, "active_now": active_now}
+
+
+def admin_list(db, state="", q="", limit=50, offset=0, now=None):
+    """Paginated voucher rows with live remaining + tier price. Read-only."""
+    now = time.time() if now is None else float(now)
+    try:
+        limit = min(200, max(1, int(limit)))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        offset = max(0, int(offset))
+    except (TypeError, ValueError):
+        offset = 0
+    where, params = [], []
+    state = (state or "").strip().upper()
+    if state:
+        if state not in ("NEW", "ACTIVE", "PAUSED", "EXPIRED", "DISABLED"):
+            return {"total": 0, "rows": []}
+        where.append("state=%s")
+        params.append(state)
+    q = (q or "").strip().upper()
+    if q:
+        where.append("UPPER(code) LIKE %s")
+        params.append("%" + q.replace("%", "").replace("_", "") + "%")
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    total = db.row("SELECT COUNT(*) AS n FROM vouchers " + clause,
+                   tuple(params))["n"]
+    rows = []
+    for r in _dicts(db.execute(
+            "SELECT * FROM vouchers " + clause +
+            " ORDER BY code ASC LIMIT %s OFFSET %s",
+            tuple(params) + (limit, offset))):
+        _, remaining = _settle(r, now)
+        rows.append({
+            "code": r["code"], "state": r["state"],
+            "total_secs": r["total_secs"], "used_secs": r["used_secs"],
+            "remaining_secs": remaining,
+            "price_php": tier_price(r["total_secs"]),
+            "bound_mac": r["bound_mac"], "last_ip": r["last_ip"],
+            "first_seen": iso(r["first_seen"]),
+            "last_auth": iso(r["last_auth"])})
+    return {"total": int(total), "rows": rows}
+
+
+def admin_events(db, limit=50):
+    """Latest event rows first (audit/activity feed). Read-only."""
+    try:
+        limit = min(200, max(1, int(limit)))
+    except (TypeError, ValueError):
+        limit = 50
+    return {"rows": [{
+        "id": r["id"], "code": r["code"], "mac": r["mac"],
+        "decision": r["decision"], "reason": r["reason"],
+        "remaining_secs": r["remaining_secs"],
+        "created_at": iso(r["created_at"])} for r in _dicts(db.execute(
+            "SELECT * FROM events ORDER BY id DESC LIMIT %s", (limit,)))]}
+
+
+def admin_create(db, code, total_secs):
+    """New NEW row (unsold inventory). Tier implied by total_secs."""
+    code = normalize(code)
+    try:
+        total_secs = int(total_secs)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bad_secs"}
+    if not CODE_RE.match(code):
+        return {"ok": False, "error": "bad_code"}
+    if total_secs <= 0 or total_secs > MAX_TOTAL_SECS:
+        return {"ok": False, "error": "bad_secs"}
+    db.begin_claim()
+    try:
+        if _locked_row(db, "code=%s", (code,)) is not None:
+            db.commit()
+            return {"ok": False, "error": "exists"}
+        db.execute("INSERT INTO vouchers (code,total_secs,used_secs,state)"
+                   " VALUES (%s,%s,0,'NEW')", (code, total_secs))
+        log_event(db, code, "", "", "", "ADMIN", "create", total_secs)
+        db.commit()
+        return {"ok": True, "code": code, "total_secs": total_secs,
+                "price_php": tier_price(total_secs)}
+    except Exception:
+        db.rollback()
+        raise
+
+
+def admin_set_state(db, code, state):
+    """DISABLED from any state; NEW only when never used (else deny);
+    re-enable of a used DISABLED row lands on PAUSED (remaining kept)."""
+    code = normalize(code)
+    state = (state or "").strip().upper()
+    if state not in ("NEW", "DISABLED"):
+        return {"ok": False, "error": "bad_state"}
+    db.begin_claim()
+    try:
+        row = _locked_row(db, "code=%s", (code,))
+        if row is None:
+            db.commit()
+            return {"ok": False, "error": "unknown"}
+        if state == "NEW":
+            used = bool(row["bound_mac"]) or int(row["used_secs"] or 0) > 0
+            if row["state"] == "DISABLED" and used:
+                # Re-enable of a used row: PAUSED keeps the remaining time
+                # for the bound device instead of wiping usage.
+                new_state = "PAUSED"
+            elif used:
+                db.commit()
+                return {"ok": False, "error": "used"}
+            else:
+                new_state = "NEW"
+        else:
+            new_state = "DISABLED"
+        if row["state"] == "DISABLED" and state == "DISABLED":
+            db.commit()
+            return {"ok": True, "state": "DISABLED", "noop": True}
+        db.execute("UPDATE vouchers SET state=%s WHERE code=%s",
+                   (new_state, code))
+        log_event(db, code, "", "", "", "ADMIN", "state-" + new_state.lower(),
+                  None)
+        db.commit()
+        return {"ok": True, "state": new_state}
+    except Exception:
+        db.rollback()
+        raise
+
+
+def admin_release(db, code):
+    """Clear bound_mac (non-ACTIVE only): next claim rebinds. The operator
+    escape hatch for device changes; ACTIVE is refused (pause first)."""
+    code = normalize(code)
+    db.begin_claim()
+    try:
+        row = _locked_row(db, "code=%s", (code,))
+        if row is None:
+            db.commit()
+            return {"ok": False, "error": "unknown"}
+        if row["state"] == "ACTIVE":
+            db.commit()
+            return {"ok": False, "error": "active"}
+        if not row["bound_mac"]:
+            db.commit()
+            return {"ok": True, "noop": True}
+        db.execute("UPDATE vouchers SET bound_mac=NULL, last_ip=NULL,"
+                   " last_token=NULL WHERE code=%s", (code,))
+        log_event(db, code, "", "", "", "ADMIN", "release", None)
+        db.commit()
+        return {"ok": True}
+    except Exception:
+        db.rollback()
+        raise
+
+
+def admin_extend(db, code, add_secs):
+    """Grow total_secs (cap 60d). EXPIRED flips to PAUSED so the bound
+    device can resume; other states keep their state."""
+    code = normalize(code)
+    try:
+        add_secs = int(add_secs)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bad_secs"}
+    if add_secs < 60 or add_secs > MAX_TOTAL_SECS:
+        return {"ok": False, "error": "bad_secs"}
+    db.begin_claim()
+    try:
+        row = _locked_row(db, "code=%s", (code,))
+        if row is None:
+            db.commit()
+            return {"ok": False, "error": "unknown"}
+        total = int(row["total_secs"] or 0) + add_secs
+        if total > MAX_TOTAL_SECS:
+            db.commit()
+            return {"ok": False, "error": "cap"}
+        new_state = "PAUSED" if row["state"] == "EXPIRED" else row["state"]
+        db.execute("UPDATE vouchers SET total_secs=%s, state=%s"
+                   " WHERE code=%s", (total, new_state, code))
+        log_event(db, code, "", "", "", "ADMIN", "extend", total)
+        db.commit()
+        return {"ok": True, "total_secs": total, "state": new_state,
+                "price_php": tier_price(total)}
+    except Exception:
+        db.rollback()
+        raise
+
+
+def admin_delete(db, code):
+    """Remove NEW + never-bound rows only (unsold inventory). Audit event
+    is written first so the deletion itself stays on record."""
+    code = normalize(code)
+    db.begin_claim()
+    try:
+        row = _locked_row(db, "code=%s", (code,))
+        if row is None:
+            db.commit()
+            return {"ok": False, "error": "unknown"}
+        if row["state"] != "NEW":
+            db.commit()
+            return {"ok": False, "error": "state"}
+        if row["bound_mac"] or int(row["used_secs"] or 0) > 0:
+            db.commit()
+            return {"ok": False, "error": "used"}
+        log_event(db, code, "", "", "", "ADMIN", "delete", None)
+        db.execute("DELETE FROM vouchers WHERE code=%s", (code,))
+        db.commit()
+        return {"ok": True}
+    except Exception:
+        db.rollback()
+        raise
+
+
 def format_claim(result):
     if result["decision"] == "ALLOW":
         line = "ALLOW %d %d %d" % (result["remaining"], UP_KBPS, DOWN_KBPS)
@@ -645,6 +948,38 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path == "/healthz":
                 return self._send(200, "text/plain", b"ok\n")
+            if parsed.path == "/admin":
+                return self._serve_admin_page()
+            if parsed.path in ("/admin/api/stats", "/admin/api/vouchers",
+                               "/admin/api/events"):
+                qs = urllib.parse.parse_qs(parsed.query)
+                if not admin_ok(qs.get("psk", [""])[0] or
+                                self.headers.get("X-PSK", "")):
+                    return self._send_json(403, {"error": "auth"})
+                try:
+                    db = DB.connect()
+                except BackendError as exc:
+                    log.error("backend unavailable: %s", exc)
+                    return self._send_json(503, {"error": "backend"})
+                try:
+                    if parsed.path == "/admin/api/stats":
+                        body = admin_stats(db)
+                    elif parsed.path == "/admin/api/vouchers":
+                        body = admin_list(
+                            db, qs.get("state", [""])[0],
+                            qs.get("q", [""])[0],
+                            qs.get("limit", ["50"])[0],
+                            qs.get("offset", ["0"])[0])
+                    else:
+                        body = admin_events(
+                            db, qs.get("limit", ["50"])[0])
+                except Exception:
+                    log.error("admin GET failed:\n%s",
+                              traceback.format_exc())
+                    return self._send_json(500, {"error": "error"})
+                finally:
+                    db.close()
+                return self._send_json(200, body)
             if parsed.path == "/session":
                 qs = urllib.parse.parse_qs(parsed.query)
                 if not self._psk_ok(qs.get("psk", [""])[0] or
@@ -721,13 +1056,53 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             parsed = urllib.parse.urlparse(self.path)
-            if parsed.path not in ("/claim", "/pause", "/session", "/resume"):
+            if parsed.path not in ("/claim", "/pause", "/session", "/resume",
+                                   "/admin/api/create",
+                                   "/admin/api/set_state",
+                                   "/admin/api/release",
+                                   "/admin/api/extend",
+                                   "/admin/api/delete"):
                 return self._send(404, "text/plain", b"DENY unknown\n")
             raw = self._read_body()
             if raw is None:
                 return self._send(400, "text/plain", b"DENY malformed\n")
             fields = urllib.parse.parse_qs(
                 raw.decode("utf-8", "replace"))
+            if parsed.path.startswith("/admin/api/"):
+                if not admin_ok((fields.get("psk") or [""])[0] or
+                                self.headers.get("X-PSK", "")):
+                    return self._send_json(403, {"error": "auth"})
+                try:
+                    db = DB.connect()
+                except BackendError as exc:
+                    log.error("backend unavailable: %s", exc)
+                    return self._send_json(503, {"error": "backend"})
+                try:
+                    if parsed.path == "/admin/api/create":
+                        body = admin_create(
+                            db, (fields.get("code") or [""])[0],
+                            (fields.get("total_secs") or [""])[0])
+                    elif parsed.path == "/admin/api/set_state":
+                        body = admin_set_state(
+                            db, (fields.get("code") or [""])[0],
+                            (fields.get("state") or [""])[0])
+                    elif parsed.path == "/admin/api/release":
+                        body = admin_release(
+                            db, (fields.get("code") or [""])[0])
+                    elif parsed.path == "/admin/api/extend":
+                        body = admin_extend(
+                            db, (fields.get("code") or [""])[0],
+                            (fields.get("add_secs") or [""])[0])
+                    else:
+                        body = admin_delete(
+                            db, (fields.get("code") or [""])[0])
+                except Exception:
+                    log.error("admin POST failed:\n%s",
+                              traceback.format_exc())
+                    return self._send_json(500, {"error": "error"})
+                finally:
+                    db.close()
+                return self._send_json(200, body)
             if not self._psk_ok((fields.get("psk") or [""])[0]):
                 return self._send(403, "text/plain", b"DENY auth\n")
             if parsed.path == "/pause":
@@ -768,6 +1143,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_json(self, code, obj):
+        try:
+            body = json.dumps(obj).encode()
+        except Exception:
+            body = b'{"error":"error"}'
+            code = 500
+        self._send(code, "application/json", body)
+
+    def _serve_admin_page(self):
+        """Empty dashboard shell (no data, no key inside). All data calls
+        are separately gated by admin_ok; a missing file is a plain 404."""
+        try:
+            here = os.path.dirname(os.path.abspath(__file__))
+            with open(os.path.join(here, "admin.html"), "rb") as fh:
+                return self._send(200, "text/html", fh.read())
+        except OSError:
+            return self._send(404, "text/plain", b"DENY unknown\n")
+
 
 def check_backend():
     """Startup probe: returns backend kind or raises BackendError."""
@@ -784,6 +1177,8 @@ if __name__ == "__main__":
                         format="%(asctime)s %(levelname)s %(message)s")
     if not os.environ.get("VOUCHER_PSK"):
         raise SystemExit("VOUCHER_PSK is required (never empty in production)")
+    if not os.environ.get("ADMIN_PSK"):
+        log.warning("ADMIN_PSK unset: /admin/api/* will deny everything")
     try:
         kind = check_backend()
     except BackendError as exc:

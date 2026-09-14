@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>Voucher Admin</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+	--bg: #f4f6f8; --card: #ffffff; --text: #17202a; --muted: #7b8794;
+	--line: #e5e9ed; --primary: #1677ff; --primary-dark: #0f62d6;
+	--ok: #1a7f37; --ok-bg: #eaf7ee; --warn: #9a6700; --warn-bg: #fff6e0;
+	--bad: #dc3545; --bad-bg: #fdf0f2; --info-bg: #eef4ff;
+}
+body { font-family: Arial, Helvetica, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+.topbar { background: var(--card); border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+.topbar h1 { font-size: 16px; letter-spacing: 0.5px; }
+.topbar h1 span { color: var(--primary); }
+.topbar button { width: auto; margin: 0; padding: 8px 14px; font-size: 12px; }
+main { max-width: 960px; margin: 0 auto; padding: 16px 12px 40px; }
+button { background: var(--primary); color: #fff; border: 0; border-radius: 10px; padding: 12px 16px; font-size: 14px; font-weight: bold; cursor: pointer; width: 100%; }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+button.ghost { background: var(--card); color: var(--primary); border: 1px solid var(--primary); }
+button.danger { background: var(--bad); }
+button.small { width: auto; padding: 6px 10px; font-size: 12px; border-radius: 8px; margin: 2px 2px 2px 0; }
+input, select { width: 100%; height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 15px; outline: none; background: #fff; color: var(--text); }
+input:focus, select:focus { border-color: var(--primary); }
+label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 14px; margin-bottom: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.04); }
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 12px; text-align: center; }
+.stat.hero { grid-column: span 2; background: var(--primary); color: #fff; border: 0; }
+.stat.hero span { color: rgba(255,255,255,0.8); }
+.stat strong { display: block; font-size: 22px; }
+.stat.hero strong { font-size: 32px; }
+.stat span { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); letter-spacing: 0.5px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.tabs button { padding: 10px 6px; font-size: 13px; }
+.tabs button.off { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+.b-NEW { background: var(--info-bg); color: var(--primary-dark); }
+.b-ACTIVE { background: var(--ok-bg); color: var(--ok); }
+.b-PAUSED { background: var(--warn-bg); color: var(--warn); }
+.b-EXPIRED { background: var(--bg); color: var(--muted); }
+.b-DISABLED { background: var(--bad-bg); color: var(--bad); }
+.wrap { overflow-x: auto; margin: 0 -14px; padding: 0 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
+th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; }
+td.code { font-weight: bold; white-space: nowrap; }
+td .sub { display: block; font-size: 11px; color: var(--muted); font-weight: normal; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
+.toolbar input { height: 42px; }
+.toolbar select { height: 42px; max-width: 150px; }
+.pager { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.pager button { width: auto; }
+.pager span { font-size: 12px; color: var(--muted); }
+.ev { border-bottom: 1px solid var(--line); padding: 8px 2px; font-size: 13px; }
+.ev:last-child { border-bottom: 0; }
+.ev .t { font-size: 11px; color: var(--muted); }
+.msg { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 13px; display: none; }
+.msg.ok { display: block; background: var(--ok-bg); color: var(--ok); }
+.msg.err { display: block; background: var(--bad-bg); color: var(--bad); }
+#login { max-width: 380px; margin: 60px auto 0; }
+#login p { font-size: 12px; color: var(--muted); margin-top: 10px; text-align: center; line-height: 1.5; }
+.hide { display: none !important; }
+@media (min-width: 700px) { .stats { grid-template-columns: repeat(4, 1fr); } .stat.hero { grid-column: span 4; } }
+</style>
+</head>
+<body>
+<div class="topbar"><h1>VOUCHER <span>ADMIN</span></h1><button id="logoutBtn" class="ghost small hide">Logout</button></div>
+<main>
+	<section id="login" class="card">
+		<label for="key">Admin key</label>
+		<input type="password" id="key" autocomplete="current-password" placeholder="ADMIN_PSK value">
+		<div style="margin-top:12px"><button id="loginBtn">Unlock</button></div>
+		<div id="loginMsg" class="msg"></div>
+		<p>Same key as the server's ADMIN_PSK. Kept in this tab's session storage only — never in URLs or logs.</p>
+	</section>
+	<div id="app" class="hide">
+		<div class="tabs">
+			<button data-tab="ov" id="tab-ov">Overview</button>
+			<button data-tab="vx" id="tab-vx" class="off">Vouchers</button>
+			<button data-tab="mk" id="tab-mk" class="off">Create</button>
+			<button data-tab="ac" id="tab-ac" class="off">Activity</button>
+		</div>
+		<section id="pane-ov">
+			<div class="stats">
+				<div class="stat hero"><strong id="s-rev">—</strong><span>REVENUE (PHP)</span></div>
+				<div class="stat"><strong id="s-sold">—</strong><span>SOLD</span></div>
+				<div class="stat"><strong id="s-unsold">—</strong><span>UNUSED STOCK</span></div>
+				<div class="stat"><strong id="s-active">—</strong><span>ACTIVE NOW</span></div>
+				<div class="stat"><strong id="s-liab">—</strong><span>TIME OWED</span></div>
+			</div>
+			<div class="card"><h3 style="font-size:14px;margin-bottom:8px">Per-tier profit</h3><div class="wrap"><table>
+				<tr><th>Tier</th><th>Price</th><th>Sold</th><th>Stock</th><th>Revenue</th></tr>
+				<tbody id="tierBody"></tbody>
+			</table></div></div>
+			<div class="card"><h3 style="font-size:14px;margin-bottom:8px">By state</h3><div id="stateRow" style="font-size:13px"></div>
+			<div style="margin-top:10px"><button id="refreshBtn" class="ghost">Refresh</button></div></div>
+		</section>
+		<section id="pane-vx" class="hide">
+			<div class="card">
+				<div class="toolbar">
+					<input id="q" placeholder="Search code…" autocomplete="off">
+					<select id="fstate"><option value="">All states</option><option>NEW</option><option>ACTIVE</option><option>PAUSED</option><option>EXPIRED</option><option>DISABLED</option></select>
+				</div>
+				<div class="toolbar"><button id="searchBtn">Search</button></div>
+				<div class="wrap"><table>
+					<tr><th>Code</th><th>Tier</th><th>State</th><th>Left</th><th>Device</th><th>Actions</th></tr>
+					<tbody id="vxBody"></tbody>
+				</table></div>
+				<div class="pager"><button id="prevBtn" class="ghost">‹ Prev</button><span id="pgInfo"></span><button id="nextBtn" class="ghost">Next ›</button></div>
+				<div id="vxMsg" class="msg"></div>
+			</div>
+		</section>
+		<section id="pane-mk" class="hide">
+			<div class="card">
+				<label for="mcode">Voucher code (A-Z 0-9 -, 4–20 chars)</label>
+				<input id="mcode" placeholder="GUEST-001" autocomplete="off" maxlength="20" style="text-transform:uppercase">
+				<label for="mtier">Tier</label>
+				<select id="mtier"></select>
+				<div style="margin-top:14px"><button id="mkBtn">Create voucher</button></div>
+				<div id="mkMsg" class="msg"></div>
+			</div>
+		</section>
+		<section id="pane-ac" class="hide">
+			<div class="card"><div id="evList"></div>
+			<div style="margin-top:10px"><button id="evBtn" class="ghost">Refresh</button></div></div>
+		</section>
+	</div>
+</main>
+<script>
+"use strict";
+var K = null, page = 0, PSZ = 25;
+var TIERS = [[5,28800,"P5 - 8 Hours"],[10,57600,"P10 - 16 Hours"],[20,129600,"P20 - 36 Hours"],[50,345600,"P50 - 4 Days"],[100,777600,"P100 - 9 Days"],[200,1641600,"P200 - 19 Days"],[500,2592000,"P500 - 30 Days"]];
+function fmt(s){ s = Math.max(0, Math.round(s)); if (s < 3600) return Math.floor(s/60) + "m"; if (s < 86400) return (s/3600).toFixed(s % 3600 ? 1 : 0).replace(/\.0$/,"") + "h"; return (s/86400).toFixed(s % 86400 ? 1 : 0).replace(/\.0$/,"") + "d"; }
+function esc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function msg(id, ok, t){ var e = document.getElementById(id); e.className = "msg " + (ok ? "ok" : "err"); e.textContent = t; }
+function api(path, data, cb){
+	var x = new XMLHttpRequest(), u = path + "?psk=" + encodeURIComponent(K);
+	x.open(data ? "POST" : "GET", u, true);
+	x.onreadystatechange = function(){ if (x.readyState !== 4) return;
+		if (x.status === 403){ logout(); return; }
+		var j = null; try { j = JSON.parse(x.responseText); } catch (e) {}
+		cb(x.status, j); };
+	if (data){ var f = []; for (var k in data) f.push(encodeURIComponent(k) + "=" + encodeURIComponent(data[k])); f.push("psk=" + encodeURIComponent(K)); x.setRequestHeader("Content-Type","application/x-www-form-urlencoded"); x.send(f.join("&")); }
+	else x.send();
+}
+function login(){ var v = document.getElementById("key").value; if (!v) return; K = v;
+	api("/admin/api/stats", null, function(s, j){ if (s === 200 && j && j.revenue_php !== undefined){ try { sessionStorage.setItem("vap_admin_key", K); } catch (e) {} show(); }
+		else { K = null; msg("loginMsg", false, s === 403 ? "Wrong key." : "Server unreachable (" + s + ")."); } }); }
+function logout(){ K = null; try { sessionStorage.removeItem("vap_admin_key"); } catch (e) {} document.getElementById("app").className = "hide"; document.getElementById("login").className = "card"; document.getElementById("logoutBtn").className = "ghost small hide"; document.getElementById("key").value = ""; }
+function show(){ document.getElementById("login").className = "hide"; document.getElementById("app").className = ""; document.getElementById("logoutBtn").className = "ghost small"; loadStats(); loadVx(); loadEv(); }
+function loadStats(){ api("/admin/api/stats", null, function(s, j){ if (s !== 200 || !j) return;
+	document.getElementById("s-rev").textContent = "P" + j.revenue_php.toLocaleString();
+	document.getElementById("s-sold").textContent = j.sold; document.getElementById("s-unsold").textContent = j.unsold;
+	document.getElementById("s-active").textContent = j.active_now; document.getElementById("s-liab").textContent = fmt(j.liability_secs);
+	var h = ""; j.by_tier.forEach(function(t){ h += "<tr><td>" + fmt(t.total_secs) + "</td><td>" + (t.price_php == null ? "custom" : "P" + t.price_php) + "</td><td>" + t.sold + "</td><td>" + t.unsold + "</td><td>P" + t.revenue_php.toLocaleString() + "</td></tr>"; });
+	document.getElementById("tierBody").innerHTML = h || "<tr><td colspan=5>No vouchers yet.</td></tr>";
+	var st = ""; ["NEW","ACTIVE","PAUSED","EXPIRED","DISABLED"].forEach(function(k){ st += '<span class="badge b-' + k + '">' + k + " " + (j.by_state[k] || 0) + "</span> "; });
+	document.getElementById("stateRow").innerHTML = st; }); }
+function loadVx(){ var q = document.getElementById("q").value, st = document.getElementById("fstate").value;
+	api("/admin/api/vouchers?state=" + encodeURIComponent(st) + "&q=" + encodeURIComponent(q) + "&limit=" + PSZ + "&offset=" + (page*PSZ), null, function(s, j){ if (s !== 200 || !j) return;
+	var h = ""; j.rows.forEach(function(r){ h += "<tr><td class=code>" + esc(r.code) + "</td><td>" + (r.price_php == null ? "custom<br>" + fmt(r.total_secs) : "P" + r.price_php) + "</td><td><span class=\"badge b-" + r.state + "\">" + r.state + "</span></td><td>" + fmt(r.remaining_secs) + "<span class=sub>used " + fmt(r.used_secs) + "</span></td><td>" + esc(r.bound_mac || "—") + "<span class=sub>" + esc(r.last_ip || "") + "</span></td><td>" + acts(r) + "</td></tr>"; });
+	document.getElementById("vxBody").innerHTML = h || "<tr><td colspan=6>No matches.</td></tr>";
+	document.getElementById("pgInfo").textContent = "Page " + (page+1) + " of " + Math.max(1, Math.ceil(j.total/PSZ)) + " (" + j.total + ")"; }); }
+function acts(r){ var b = "";
+	if (r.bound_mac && r.state !== "ACTIVE") b += "<button class=small onclick=\"mod('release','" + r.code + "')\">Release</button>";
+	if (r.state !== "DISABLED") b += "<button class=small onclick=\"mod('set_state','" + r.code + "','DISABLED')\">Disable</button>";
+	else b += "<button class=small onclick=\"mod('set_state','" + r.code + "','NEW')\">Enable</button>";
+	b += "<button class=small onclick=\"ext('" + r.code + "')\">+Time</button>";
+	if (r.state === "NEW" && !r.bound_mac) b += "<button class=\"small\" style=\"background:var(--bad)\" onclick=\"del('" + r.code + "')\">Delete</button>";
+	return b; }
+function mod(path, code, st){ var d = {code: code}; if (st) d.state = st;
+	api("/admin/api/" + path, d, function(s, j){ msg("vxMsg", !!(j && j.ok), (j && (j.ok ? "Done." : "Refused: " + j.error)) || ("HTTP " + s)); loadVx(); loadStats(); }); }
+function ext(code){ var v = prompt("Add seconds to " + code + " (min 60):", "86400"); if (v == null) return;
+	api("/admin/api/extend", {code: code, add_secs: v}, function(s, j){ msg("vxMsg", !!(j && j.ok), (j && (j.ok ? "Extended." : "Refused: " + j.error)) || ("HTTP " + s)); loadVx(); loadStats(); }); }
+function del(code){ if (!confirm("Delete unused voucher " + code + "?")) return;
+	api("/admin/api/delete", {code: code}, function(s, j){ msg("vxMsg", !!(j && j.ok), (j && (j.ok ? "Deleted." : "Refused: " + j.error)) || ("HTTP " + s)); loadVx(); loadStats(); }); }
+function loadEv(){ api("/admin/api/events?limit=50", null, function(s, j){ if (s !== 200 || !j) return;
+	var h = ""; j.rows.forEach(function(e){ h += "<div class=ev><b>" + esc(e.decision) + "</b> " + esc(e.reason) + " · " + esc(e.code) + (e.mac ? " · " + esc(e.mac) : "") + "<div class=t>" + esc(e.created_at || "") + (e.remaining_secs == null ? "" : " · left " + fmt(e.remaining_secs)) + "</div></div>"; });
+	document.getElementById("evList").innerHTML = h || "No events yet."; }); }
+function mk(){ var c = document.getElementById("mcode").value.toUpperCase().trim(), t = document.getElementById("mtier").value.split(":");
+	api("/admin/api/create", {code: c, total_secs: t[1]}, function(s, j){ msg("mkMsg", !!(j && j.ok), (j && (j.ok ? "Created " + j.code + " (" + fmt(j.total_secs) + ")." : "Refused: " + j.error)) || ("HTTP " + s)); if (j && j.ok){ document.getElementById("mcode").value = ""; loadStats(); } }); }
+document.getElementById("loginBtn").onclick = login;
+document.getElementById("key").onkeydown = function(e){ if (e.key === "Enter") login(); };
+document.getElementById("logoutBtn").onclick = logout;
+document.getElementById("refreshBtn").onclick = loadStats;
+document.getElementById("searchBtn").onclick = function(){ page = 0; loadVx(); };
+document.getElementById("prevBtn").onclick = function(){ if (page > 0){ page--; loadVx(); } };
+document.getElementById("nextBtn").onclick = function(){ page++; loadVx(); };
+document.getElementById("evBtn").onclick = loadEv;
+document.getElementById("mkBtn").onclick = mk;
+var tabs = document.querySelectorAll(".tabs button");
+for (var i = 0; i < tabs.length; i++) tabs[i].onclick = function(){ for (var j = 0; j < tabs.length; j++){ tabs[j].className = "off"; document.getElementById("pane-" + tabs[j].getAttribute("data-tab")).className = "hide"; } this.className = ""; document.getElementById("pane-" + this.getAttribute("data-tab")).className = ""; };
+(function(){ var s = ""; TIERS.forEach(function(t){ s += "<option value=\"" + t[0] + ":" + t[1] + "\">" + t[2] + "</option>"; }); document.getElementById("mtier").innerHTML = s;
+	try { var k = sessionStorage.getItem("vap_admin_key"); if (k){ document.getElementById("key").value = k; login(); } } catch (e) {} })();
+</script>
+</body>
+</html>
